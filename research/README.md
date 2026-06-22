@@ -19,6 +19,7 @@
 | [05-batch-acquisition.md](05-batch-acquisition.md) | 배치(q≈40) 제안 전략 |
 | [06-recommendation.md](06-recommendation.md) | **최종 baseline 권고 + 15주 계획** (저예산 O(10³) 기준) |
 | [07-budget-regimes.md](07-budget-regimes.md) | **비용 인하(320/일) 시나리오 → 모델기반 진화알고리즘으로 권고 전환** |
+| [08-inference-latency.md](08-inference-latency.md) | **추론 지연 ≤3s(목표≤500ms) 제약 → 학습/추론 분리(후보 큐·amortized·anytime)** |
 
 ## TL;DR 결론 (자세한 근거는 06 참조)
 1. **첫 1~2 배치**는 무작위 대신 **screening DoE**(Plackett–Burman / D-optimal)로 주효과+저차 상호작용 신호 확보.
