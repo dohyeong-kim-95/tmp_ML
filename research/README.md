@@ -20,6 +20,8 @@
 | [06-recommendation.md](06-recommendation.md) | **최종 baseline 권고 + 15주 계획** (저예산 O(10³) 기준) |
 | [07-budget-regimes.md](07-budget-regimes.md) | **비용 인하(320/일) 시나리오 → 모델기반 진화알고리즘으로 권고 전환** |
 | [08-inference-latency.md](08-inference-latency.md) | **추론 지연 ≤3s(목표≤500ms) 제약 → 학습/추론 분리(후보 큐·amortized·anytime)** |
+| [09-phase2-method-selection.md](09-phase2-method-selection.md) | **"EA+GBM이 최선인가" 검증 프레임 + 설계질문(상호작용차수/linkage진위/배치다양성/배치추출/GBM캘리브레이션)** |
+| [10-representation-pipeline.md](10-representation-pipeline.md) | **도메인지식 점증 주입용 표현 파이프라인(X0→…→latent→…→metric) 타당성 평가** |
 
 ## TL;DR 결론 (자세한 근거는 06 참조)
 1. **첫 1~2 배치**는 무작위 대신 **screening DoE**(Plackett–Burman / D-optimal)로 주효과+저차 상호작용 신호 확보.
