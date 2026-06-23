@@ -51,8 +51,15 @@
 ## 3. 단계별 파이프라인
 
 **Phase 0 — 인코딩 & 제약 표현 (도메인지식 슬롯, 공통)**
-- binary → 모델 입력 표현으로 매핑. **배타/그룹 → 범주형 재파라미터화**, **조건부 → 계층(DAG)** 공간.
-- 구조 규칙은 가능해지는 대로 제약/합성변수/사전지식으로 주입할 **슬롯만 비워둔다**.
+- **X0→X 변환은 rule-based Python transform 함수로 구현한다.** 모델/optimizer가 raw bit 의미를 *학습하도록 방치하지 않고*,
+  **명시적 변환 계층에서 의미 있는 representation(X)을 제공**한다. (배타/그룹 → 범주형 재파라미터화, 조건부 → 계층(DAG) 공간)
+- 구조 규칙은 가능해지는 대로 제약/합성변수/사전지식으로 주입할 **슬롯만 비워둔다**(현재는 항등에 가까운 변환부터).
+- **데이터 명세(data spec) 관리** — X representation의 각 column에 대해 다음을 기록:
+  - `type`(binary/categorical/ordinal/conditional), `allowed_values`, `ordered`(순서 여부),
+    `source_bits`(원 X0 비트), `parent`/`active_when`(조건부 활성 규칙), `constraint`(hard/soft).
+  - **두 형태로 동시 관리**: 사람이 읽는 **문서** + 코드가 읽는 **schema 파일**(예: YAML/JSON) — 둘이 같은 사실의 단일 소스.
+  - 이 schema가 **인코딩·feasible 후보 생성(research/04 §4.2)·DoE(research/03)·옵티마이저**가 공유하는 계약(contract)이 됨.
+  - ⚠️ 실제 값/규칙은 대외비 → 현재는 **필드 구조(스키마 틀)** 만 정의, 내용은 규칙 확보 시 채움.
 
 **Phase 1 — 초기 데이터 확보 (cold start)**
 - ⚠️ **DoE는 raw X0(60bit)가 아니라 인코딩된 feature space X에서 수행.**
@@ -72,6 +79,10 @@
   - 대리모델: (해석형) **BOCS형 희소 pairwise 베이지안 회귀** / (강건형) **SMAC3(RF)·Optuna(TPE)**.
   - 배치 추출: **배치 Thompson sampling**(q=40에 적합) / Local Penalization / Kriging-Believer.
     (독립 ask×40은 중복/근접 후보 발생 → 금지.)
+
+> **측정·판정 정책(공통)**: 탐색 objective는 **Y 최대화**, 성공 기준은 **Y_target 통과 X 발견**(01 §5).
+> 루프 중 관측 Y는 **deterministic single observation**으로 사용(예산 효율), **Y_target 통과 후보만 confirmation 단계에서 반복측정**해
+> Monte Carlo/bootstrap/one-sided CI/guardband 중 하나로 최종 판정. budget-to-target·threshold-hit count·다양성을 함께 기록.
 
 **Phase 3 — 도메인지식 주입 (발전 단계, 공통)**
 - 구조 규칙을 제약/사전분포(prior)/커스텀 feature/커널/EA 연관모델 초기화로 주입.

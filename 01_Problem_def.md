@@ -30,6 +30,12 @@
 - 일부는 **상호작용(interaction)이 매우 큼**
 - ⚠️ 구체 규칙은 대외비. baseline은 이 구조를 **강하게 가정하지 않고**, 추후 제약/사전지식으로 **끼워넣을 수 있는 구조**로 설계한다.
 
+### 문제 관점 (framing)
+- 데이터 0건에서 시작하지만, **도메인 관점에서 X의 변화가 Y의 변화에 영향을 주는 "최적화 가능한 black-box 문제"** 로 본다.
+- 즉 **문제의 최적화 가능성 자체는 도메인 지식으로 정당화**된다(무작위 잡음이 아니라 구조 있는 반응면이라는 전제).
+- 초기 baseline은 **구체 도메인지식을 하드코딩하지 않는다.** 대신 구체 규칙은 추후
+  **representation · constraint · prior · feature** 형태로 **점진 주입**한다(02_Plan §3 Phase 3, research/10).
+
 ---
 
 ## 3. 핵심 제약 (이 제약이 방법론을 결정한다 — 결정 논리는 02_Plan §1)
@@ -69,16 +75,26 @@
 
 ## 5. 성공 기준
 
-- 🎯 **1차(주 기준): Y가 내부 기준(target threshold)을 통과하는 X 조합을 예산 내에 발견 — 단, 통과는 confirmatory 측정으로 확정.**
-  - 순수 최대화가 아니라 **목표 달성(satisficing/feasibility)** 문제로 본다 — "충분히 좋은 X를 찾았는가".
-  - 지표: **threshold 도달까지의 실험 수(budget-to-target)**, **통과 X의 개수·다양성**, best-Y 곡선.
-- ✅ **confirmatory measurement 필수.** 단발 측정으로 통과를 "성공" 선언하면 안 됨.
-  - 이유: **노이즈(§3-9) + 선택 편향** → **winner's / optimizer's curse**(임계 초과 선택은 노이즈로 과대추정 → 재측정 시 **평균 회귀**).
-  - 대응: 통과 의심 상위 후보를 **반복 측정(confirmation runs)** → "discovery → confirmation" **2단계 판정**. (방법 상세: 02_Plan / research/09-G)
+### 5.1 탐색 objective vs 프로젝트 성공 기준 (구분)
+- **Optimizer의 탐색 objective = Y 최대화(maximize Y).** (탐색은 단순·명확한 목적함수로 구동)
+- **프로젝트 성공 기준 = 내부 target threshold(Y_target)를 만족하는 X를 예산 내에 발견.** (satisficing/feasibility)
+- 따라서 평가/기록은 best-Y만이 아니라 다음을 **함께 기록**한다:
+  - **budget-to-target**: target 도달까지 쓴 실험 수
+  - **threshold-hit count**: target 통과 후보 개수
+  - **threshold-hit 후보의 다양성**: 통과 X들이 서로 얼마나 다른가
+  - (보조) best-Y 곡선
+
+### 5.2 측정·판정 정책 (노이즈 §3-9 대응)
+- **최적화 루프 중에는 예산 효율을 위해 각 X의 관측 Y를 deterministic single observation처럼 사용**한다(반복측정 안 함).
+- **단, Y_target을 통과한 후보는 별도 confirmation 단계에서 반복 측정**하고,
+  **Monte Carlo / bootstrap / one-sided confidence interval / guardband 중 하나의 통계 기준**으로 **최종 성공 여부를 판정**한다.
+- 근거: 단발 관측만으로 통과 선언 시 **winner's / optimizer's curse**(노이즈로 과대추정 → 재측정 시 평균 회귀). 2단계(discovery→confirmation)로 방어. (research/09-G)
+
+### 5.3 보조·확장 기준
 - 보조(sanity): 동일 예산에서 **무작위 탐색 대비 우수**, best-Y 곡선 우상향.
 - 확장성: 도메인지식 주입 시 target 도달이 더 빨라지는가.
 
-> ⚠️ threshold의 **정량 값**은 대외비/미정 → §6. 기준선이 정해져야 위 지표를 확정 가능.
+> ⚠️ Y_target의 **정량 값**, confirmation의 **반복 횟수·통계 임계**는 대외비/노이즈 의존 → §6. 정해져야 지표 확정 가능.
 
 ---
 
