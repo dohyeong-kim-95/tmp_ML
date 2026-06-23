@@ -47,6 +47,10 @@
   .flow .b.hot{border-color:var(--accent);color:var(--accent)}
   .flow .a{color:var(--accent)}
   .meta{margin-top:22px;display:flex;gap:8px;flex-wrap:wrap}
+  .diagram{width:100%;max-width:1010px;display:block;margin:6px auto 0;border:1px solid var(--line);border-radius:12px;background:#fff;padding:6px}
+  sup.fn{color:var(--accent);font-weight:800;font-size:.62em;padding-left:1px}
+  .foot{margin-top:14px;color:var(--dim);font-size:12.5px}
+  .panel h3 sup{color:var(--accent);font-weight:800}
   /* chrome */
   #counter{position:fixed;right:18px;bottom:14px;color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums;letter-spacing:.1em;z-index:40}
   #brand{position:fixed;left:20px;bottom:14px;color:var(--dim);font-size:12px;z-index:40}
@@ -140,47 +144,48 @@
       <h2><span class="k">제약조건</span> — 방법론을 결정하는 요인</h2>
       <ul>
         <li><b>예산 ≪ 탐색공간</b> — O(10<sup>4</sup>)도 2<sup>60</sup>의 ~10<sup>-14</sup> → 전수·무작위 불가 → <b>구조 활용 필수</b></li>
-        <li><b>반복 wall-clock</b> — 매일 배치 생성이 빨라야 → <b>데이터에 선형 확장되는 모델</b>(트리/선형/진화) 선호, GP의 O(n³)·HMC 회피</li>
-        <li><b>추론 지연 한도</b> — 다음 후보 생성 <b>≤ 3초(목표 ≤ 500ms)</b>, <b>학습은 무제한</b> → 무거운 탐색은 오프라인, 후보 방출은 즉시(후보 큐)</li>
-        <li><b>구조 규칙 추후 주입</b> — 지금은 구조(상호작용·linkage)를 <b>데이터로 발견</b>하는 능력이 바람직</li>
-        <li><b>성공 기준 = target threshold 통과 X 발견</b>(satisficing) — 통과는 <b>confirmation(반복측정 + LCB/guardband)</b>으로 확정
-          <ul><li>기록 지표: budget-to-target · threshold-hit count · 통과 X의 다양성</li></ul></li>
+        <li><b>반복 계산시간</b> — 매일 배치 생성이 빨라야 → <b>데이터가 늘어도 계산이 비례(선형)만 느는 모델</b>(트리·선형·진화) 선호 / 데이터가 쌓일수록 계산이 급증하는 모델은 회피<sup class="fn">1</sup></li>
+        <li><b>추론(다음 후보 생성) 지연 한도</b> — <b>≤ 3초(목표 ≤ 500ms)</b>, <b>학습은 무제한</b> → 무거운 탐색은 미리(오프라인), 후보 방출은 즉시(후보 큐)</li>
+        <li><b>구조 규칙 추후 주입</b> — 지금은 구조(상호작용·변수 묶음)를 <b>데이터로 발견</b>하는 능력이 바람직</li>
+        <li><b>성공 기준 = 목표치(threshold) 통과 X 발견</b> — 통과는 <b>반복측정 + 보수적 안전마진 기준</b>으로 확정<sup class="fn">2</sup>
+          <ul><li>기록 지표: 목표 도달까지 실험 수 · 통과 X 개수 · 통과 X의 다양성</li></ul></li>
       </ul>
+      <div class="foot">1, 2 — 용어 풀이는 Appendix(마지막 슬라이드) 참조</div>
     </div>
   </section>
 
   <!-- 5 -->
   <section class="slide" data-title="모형의 기본 구조">
     <div class="wrap">
-      <h2>모형의 <span class="k">기본 구조</span> <span class="tag" style="vertical-align:middle">현 가설 · 데이터 확보 후 벤치로 확정</span></h2>
-      <div class="regime">
-        <div class="panel main">
-          <h3>🟢 MAIN — O(10⁴)</h3>
-          <div class="stat">모델기반 진화 + 대리모델 (SAEA)</div>
+      <h2>모형의 <span class="k">기본 구조</span> <span class="tag" style="vertical-align:middle">공통 골격 — 옵티마이저만 교체</span></h2>
+      <img class="diagram" src="src/pipeline.svg" alt="공통 골격: 인코딩 X0→X → DoE 시드 → 순차 갱신 최적화 루프 → 후보 큐 서빙 → 확정 측정 → 도메인지식 주입. 루프는 MAIN(연관학습 EA + 대리모델, SAEA)과 SUB(배치 베이지안 최적화) 두 트랙으로 분기하며, 매 배치 측정 결과가 데이터로 누적되어 모델을 갱신." />
+      <div class="note">예산 체급에 따라 — <b>구조학습 EA(중예산 MAIN)</b> vs <b>표본효율 BO(저예산 SUB)</b>. 공통적으로 <b>변수 구조 활용</b>이 핵심.</div>
+    </div>
+  </section>
+
+  <!-- 6 appendix -->
+  <section class="slide" data-title="Appendix — 용어">
+    <div class="wrap">
+      <h2><span class="k">Appendix</span> — 용어 풀이</h2>
+      <div class="two">
+        <div class="panel">
+          <h3><sup>1</sup> "데이터가 쌓일수록 계산이 급증하는 모델"</h3>
           <ul>
-            <li><b>연관학습 EA</b>(DSMGA-II / LT-GOMEA) — 변수 묶음(building block) 단위 탐색</li>
-            <li><b>지도학습 대리모델</b>(GBM/RF)로 후보 사전선별 + 다양성 확보</li>
+            <li><b>가우시안 프로세스(GP)</b> — 대표적 예측모델. 데이터 n개로 학습할 때 <b>n×n 행렬 연산</b>이 필요해 계산량이 <b>n의 세제곱(n³)</b>에 비례 → 데이터가 2배면 계산은 ~8배</li>
+            <li><b>HMC</b> — 일부 베이지안 모델을 표본추출로 적합하는 반복적·고비용 방법. 같은 이유로 데이터가 쌓일수록 느려짐</li>
+            <li>→ 매일 데이터가 누적되는 본 문제엔 부적합. 반면 <b>트리·선형·진화 모델은 데이터에 대략 비례(선형)</b> → 누적돼도 감당 가능</li>
           </ul>
         </div>
-        <div class="panel sub">
-          <h3>🔵 SUB — O(10³)</h3>
-          <div class="stat">배치 베이지안 최적화 (BO)</div>
+        <div class="panel">
+          <h3><sup>2</sup> "반복측정 + 보수적 안전마진 기준"</h3>
           <ul>
-            <li><b>BOCS형 희소회귀 / SMAC3 / TPE</b> + screening DoE</li>
-            <li>배치 추출 = Thompson sampling 등(중복 회피)</li>
+            <li>측정 평균을 그대로 믿지 않고, <b>노이즈를 감안한 보수적 하한</b>이 목표치를 넘을 때만 성공으로 인정</li>
+            <li><b>LCB</b>(하한 신뢰한계) = 평균 − 노이즈 여유. <b>이 하한 ≥ 목표치</b>면 합격</li>
+            <li>동치 표현 <b>guardband(안전마진)</b> = "목표치 + 마진" 이상을 요구 — <b>반도체 테스트의 표준 관행</b></li>
+            <li>→ 노이즈로 인한 <b>거짓 합격</b>(운 좋게 한 번 통과한 가짜 성공) 방지</li>
           </ul>
         </div>
       </div>
-      <h3 style="margin-top:4px">공통 골격 — 옵티마이저만 교체</h3>
-      <div class="flow">
-        <span class="b">인코딩 X0→X<br><span style="font-weight:500;font-size:.82em;color:var(--muted)">rule-based transform</span></span><span class="a">→</span>
-        <span class="b">DoE 시드<br><span style="font-weight:500;font-size:.82em;color:var(--muted)">탐색공간 파악</span></span><span class="a">→</span>
-        <span class="b hot">순차 갱신 루프</span><span class="a">→</span>
-        <span class="b">후보 큐 서빙</span><span class="a">→</span>
-        <span class="b">confirmatory 판정</span><span class="a">→</span>
-        <span class="b">도메인지식 점진 주입</span>
-      </div>
-      <div class="note">예산 체급에 따라 — <b>구조학습 EA(중예산)</b> vs <b>표본효율 BO(저예산)</b>. 공통적으로 <b>변수 구조 활용</b>이 핵심.</div>
     </div>
   </section>
 
@@ -188,7 +193,7 @@
 
 <div id="overview"><h4>개요 — 클릭하여 이동 · Esc 닫기</h4><div class="ovgrid" id="ovgrid"></div></div>
 
-<div id="counter">1 / 5</div>
+<div id="counter">1 / 6</div>
 <div id="brand">Shmoo metric 최적화 Baseline · 문제 정의 &amp; 기본 구조</div>
 <div class="nav">
   <button id="b-prev" title="이전 (←)">‹</button>

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 400" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans KR,sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#0d9488"/>
+    </marker>
+    <marker id="ahg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- feedback arc (top) -->
+  <path d="M606,74 C606,34 606,30 520,30 C440,30 440,34 434,72" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#ahg)"/>
+  <text x="520" y="22" text-anchor="middle" font-size="12.5" fill="#54627a">측정 · 데이터 누적 → 모델 · 구조 갱신 (매 배치 반복)</text>
+
+  <!-- pipeline boxes -->
+  <g>
+    <!-- box1 -->
+    <rect x="15" y="74" width="150" height="64" rx="9" fill="#f7f9fc" stroke="#e2e8f0"/>
+    <text x="90" y="101" text-anchor="middle" font-size="14" font-weight="700" fill="#16202e">인코딩</text>
+    <text x="90" y="121" text-anchor="middle" font-size="12.5" fill="#54627a">X0 → X</text>
+    <!-- box2 -->
+    <rect x="187" y="74" width="150" height="64" rx="9" fill="#f7f9fc" stroke="#e2e8f0"/>
+    <text x="262" y="101" text-anchor="middle" font-size="14" font-weight="700" fill="#16202e">DoE 시드</text>
+    <text x="262" y="121" text-anchor="middle" font-size="12.5" fill="#54627a">탐색공간 파악</text>
+    <!-- box3 highlighted -->
+    <rect x="359" y="74" width="150" height="64" rx="9" fill="#ecfdfa" stroke="#0d9488" stroke-width="2"/>
+    <text x="434" y="101" text-anchor="middle" font-size="14" font-weight="800" fill="#0f3d38">순차 갱신</text>
+    <text x="434" y="121" text-anchor="middle" font-size="12.5" fill="#0f3d38">최적화 루프</text>
+    <!-- box4 -->
+    <rect x="531" y="74" width="150" height="64" rx="9" fill="#f7f9fc" stroke="#e2e8f0"/>
+    <text x="606" y="101" text-anchor="middle" font-size="14" font-weight="700" fill="#16202e">후보 큐 서빙</text>
+    <text x="606" y="121" text-anchor="middle" font-size="12.5" fill="#54627a">추론 ≤ 3s</text>
+    <!-- box5 -->
+    <rect x="703" y="74" width="150" height="64" rx="9" fill="#f7f9fc" stroke="#e2e8f0"/>
+    <text x="778" y="101" text-anchor="middle" font-size="14" font-weight="700" fill="#16202e">확정 측정</text>
+    <text x="778" y="121" text-anchor="middle" font-size="12.5" fill="#54627a">반복 + 안전마진</text>
+    <!-- box6 -->
+    <rect x="875" y="74" width="150" height="64" rx="9" fill="#f7f9fc" stroke="#e2e8f0"/>
+    <text x="950" y="101" text-anchor="middle" font-size="14" font-weight="700" fill="#16202e">도메인지식</text>
+    <text x="950" y="121" text-anchor="middle" font-size="12.5" fill="#54627a">점진 주입</text>
+  </g>
+
+  <!-- arrows between boxes -->
+  <g stroke="#0d9488" stroke-width="1.8" marker-end="url(#ah)">
+    <line x1="166" y1="106" x2="184" y2="106"/>
+    <line x1="338" y1="106" x2="356" y2="106"/>
+    <line x1="510" y1="106" x2="528" y2="106"/>
+    <line x1="682" y1="106" x2="700" y2="106"/>
+    <line x1="854" y1="106" x2="872" y2="106"/>
+  </g>
+
+  <!-- connector from box3 down to two tracks -->
+  <g stroke="#0d9488" stroke-width="1.8" fill="none">
+    <path d="M434,138 L434,186 L370,186" marker-end="url(#ah)"/>
+    <path d="M434,186 L670,186" />
+    <path d="M670,186 L670,206" marker-end="url(#ah)"/>
+    <path d="M370,186 L370,206" marker-end="url(#ah)"/>
+  </g>
+  <text x="520" y="178" text-anchor="middle" font-size="11.5" fill="#8593a8">예산 체급에 따라 옵티마이저 교체 (현 가설)</text>
+
+  <!-- MAIN card -->
+  <rect x="250" y="208" width="240" height="150" rx="11" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+  <text x="270" y="234" font-size="15" font-weight="800" fill="#059669">🟢 MAIN · O(10⁴)</text>
+  <text x="270" y="258" font-size="13.5" font-weight="700" fill="#16202e">모델기반 진화 + 대리모델 (SAEA)</text>
+  <text x="270" y="286" font-size="12.5" fill="#334155">· 연관학습 EA</text>
+  <text x="270" y="304" font-size="12" fill="#54627a">  (DSMGA-II / LT-GOMEA) — 변수 묶음 단위</text>
+  <text x="270" y="328" font-size="12.5" fill="#334155">· 지도학습 대리모델 (GBM / RF)</text>
+  <text x="270" y="346" font-size="12" fill="#54627a">  로 후보 사전선별 + 다양성</text>
+
+  <!-- SUB card -->
+  <rect x="550" y="208" width="240" height="150" rx="11" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+  <text x="570" y="234" font-size="15" font-weight="800" fill="#2563eb">🔵 SUB · O(10³)</text>
+  <text x="570" y="258" font-size="13.5" font-weight="700" fill="#16202e">배치 베이지안 최적화 (BO)</text>
+  <text x="570" y="286" font-size="12.5" fill="#334155">· BOCS형 희소회귀 / SMAC3 / TPE</text>
+  <text x="570" y="304" font-size="12" fill="#54627a">  + screening DoE</text>
+  <text x="570" y="328" font-size="12.5" fill="#334155">· 배치 Thompson sampling</text>
+  <text x="570" y="346" font-size="12" fill="#54627a">  (중복·근접 후보 회피)</text>
+</svg>
