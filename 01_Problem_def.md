@@ -88,6 +88,7 @@
 - **최적화 루프 중에는 예산 효율을 위해 각 X의 관측 Y를 deterministic single observation처럼 사용**한다(반복측정 안 함).
 - **단, Y_target을 통과한 후보는 별도 confirmation 단계에서 반복 측정**하고,
   **Monte Carlo / bootstrap / one-sided confidence interval / guardband 중 하나의 통계 기준**으로 **최종 성공 여부를 판정**한다.
+  - 결정규칙은 *"관측 평균이 넘었다"가 아니라 "참값이 신뢰수준으로 Y_target을 넘는다"* — baseline 권고는 **one-sided LCB ≥ Y_target (=guardband, 95%)** + 다중성 보정. (research/09-G2)
 - 근거: 단발 관측만으로 통과 선언 시 **winner's / optimizer's curse**(노이즈로 과대추정 → 재측정 시 평균 회귀). 2단계(discovery→confirmation)로 방어. (research/09-G)
 
 ### 5.3 보조·확장 기준

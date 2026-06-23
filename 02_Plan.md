@@ -58,6 +58,7 @@
 - **X0→X 변환은 rule-based Python transform 함수로 구현한다.** 모델/optimizer가 raw bit 의미를 *학습하도록 방치하지 않고*,
   **명시적 변환 계층에서 의미 있는 representation(X)을 제공**한다. (배타/그룹 → 범주형 재파라미터화, 조건부 → 계층(DAG) 공간)
 - 구조 규칙은 가능해지는 대로 제약/합성변수/사전지식으로 주입할 **슬롯만 비워둔다**(현재는 항등에 가까운 변환부터).
+- **invalid 조합 처리**: 1순위 **feasibility-by-construction(인코딩)** → 루프 중 위반은 **repair** → fallback **rejection** → 미지/soft 제약은 **penalty/분류모델**. (계층 정책 research/04 §4.3)
 - **데이터 명세(data spec) 관리** — X representation의 각 column에 대해 다음을 기록:
   - `type`(binary/categorical/ordinal/conditional), `allowed_values`, `ordered`(순서 여부),
     `source_bits`(원 X0 비트), `parent`/`active_when`(조건부 활성 규칙), `constraint`(hard/soft).
