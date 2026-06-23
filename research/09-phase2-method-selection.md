@@ -88,13 +88,28 @@
 
 ---
 
+## G. confirmatory measurement는 필요한가 (target threshold 성공 기준)
+**답변(방향) 확정: 필요하다.** 단발 측정으로 threshold 통과를 "성공" 선언하면 안 됨.
+- **이유 — winner's / optimizer's curse**: 노이즈가 있는 다수 후보에서 "임계 초과한 것"만 선택하면,
+  그 선택집합은 **노이즈로 과대추정된 후보가 우선 포함** → 재측정 시 **평균 회귀(regression to the mean)** 로 값이 내려감.
+  (선택/최적화 자체가 예측오차를 악용하는 현상; A/B·GWAS·의사결정분석에서 잘 알려짐.)
+- **대응**:
+  1. **2단계 판정(discovery → confirmation)**: 통과 의심 상위 후보를 **반복 측정(confirmation runs)** 해 참값 확정.
+  2. **편향 보정**: 선택편향/winner's curse 보정 추정으로 "재현 확률"을 추정, 다중비교 보정.
+  3. **예산 배정**: 매 배치의 일부를 **상위 후보 재측정**에 할당 → 노이즈(Q10) 추정과 confirmation을 겸함.
+- 성공 기준(§7)은 따라서 **"confirmation으로 확정된 threshold 통과 X"** 로 정의해야 신뢰 가능.
+- ⚠️ 필요한 **반복 횟수·임계**는 노이즈 크기에 의존 → **데이터 후 확정(보류)**.
+
+---
+
 ## 종합
-- **확정(데이터 불요)**: 배치 다양성(D)·SUB 배치추출(E)·GBM 캘리브레이션 보정 도구(F)·상호작용 자유도 상한(B 일부)·검증 프로토콜(C).
-- **보류(데이터 필요)**: 식별 가능 상호작용 차수의 실제값(B), linkage 진위 판정(C), 방법 우열 최종판정(A), GBM 캘리브레이션 충분성(F).
+- **확정(데이터 불요)**: 배치 다양성(D)·SUB 배치추출(E)·GBM 캘리브레이션 보정 도구(F)·상호작용 자유도 상한(B 일부)·검증 프로토콜(C)·**confirmatory 2단계 판정(G)**.
+- **보류(데이터 필요)**: 식별 가능 상호작용 차수의 실제값(B), linkage 진위 판정(C), 방법 우열 최종판정(A), GBM 캘리브레이션 충분성(F), confirmation 반복횟수(G).
 - Phase 2의 산출은 **"판정 도구(벤치+ablation+검증 프로토콜)"** 이며, **우열 결론은 초기 데이터 확보 후**.
 
 ## Sources
 - 자유도/상호작용: [DOE 스크리닝 원리](https://online.stat.psu.edu/stat503/lesson/8/8.4) (effect sparsity/heredity)
+- winner's/optimizer's curse·confirmation: [The Optimizer's Curse (Smith & Winkler)](https://www.researchgate.net/publication/220534939_The_Optimizer's_Curse_Skepticism_and_Postdecision_Surprise_in_Decision_Analysis) · [Statistical correction of the Winner's Curse (PLOS Genetics)](https://journals.plos.org/plosgenetics/article?id=10.1371%2Fjournal.pgen.1006916) · [Winner's Curse in A/B Testing](https://atticusli.com/replication-crisis/ab-testing-winners-curse/) · [Beating the Winner's Curse via Inference-Aware Policy Optimization](https://www.arxiv.org/pdf/2510.18161)
 - 배치 다양성(DPP): [Diversified Sampling for Batched BO with DPPs](https://arxiv.org/abs/2110.11665) · [Batched GP Bandit via DPP](https://arxiv.org/pdf/1611.04088) · [Enhancing Batch Diversity in Surrogate Optimization (DPP)](https://dl.acm.org/doi/10.1145/3721296)
 - GBM/RF 불확실성: [Instance-Based Uncertainty for Gradient-Boosted Trees](https://arxiv.org/pdf/2205.11412) · [Conformalized Quantile Regression](https://valeman.medium.com/conformalized-quantile-regression-smarter-uncertainty-prediction-for-data-scientists-6389bea7a7c4) · [sklearn GBM quantile intervals](https://scikit-learn.org/stable/auto_examples/ensemble/plot_gradient_boosting_quantile.html)
 - 배치 BO 추출/연관학습: research/05, research/02, research/07 및 그 출처(Batch Thompson, DSMGA-II 등)

@@ -175,10 +175,14 @@
 
 ## 7. 성공 기준
 
-- 🎯 **1차(주 기준): Y가 내부 기준(target threshold)을 통과하는 X 조합을 예산 내에 발견.**
+- 🎯 **1차(주 기준): Y가 내부 기준(target threshold)을 통과하는 X 조합을 예산 내에 발견 — 단, 통과는 confirmatory 측정으로 확정.**
   - 즉 순수 최대화가 아니라 **목표 달성(satisficing/feasibility)** 문제로 본다 — "충분히 좋은 X를 찾았는가".
   - 함의: best-Y 추적뿐 아니라 **threshold 도달까지의 실험 수(time/budget-to-target)**, **threshold 통과 X의 개수·다양성**도 지표가 됨.
   - threshold 통과 영역을 노리는 **level-set/feasibility 지향 탐색**(목표 근처를 집중 샘플)이 순수 최대화보다 유리할 수 있음(추후 검토).
+- ✅ **confirmatory measurement 필요(필수).** 한 번 측정으로 threshold를 넘은 듯 보여도 그대로 "성공" 선언하면 안 됨.
+  - 이유: **노이즈(§3-#10) + 선택 편향**. 많은 후보 중 "통과한 것"만 고르면 **winner's curse / optimizer's curse**(임계 초과 선택은 노이즈로 과대추정 → 재측정 시 **평균 회귀**)가 발생.
+  - 대응: threshold를 넘은 **상위 후보를 반복 측정(confirmation runs)** 해 참값을 확인, "discovery → confirmation" **2단계 판정**. 다중비교/선택편향 보정 고려.
+  - 운영: 매 배치 예산의 일부를 **상위 후보 재측정**에 배정(노이즈 추정도 겸함).
 - 보조 기준(sanity): 동일 예산에서 **무작위 탐색 대비 우수**(하한선 확인용), best-Y 곡선 우상향.
 - 확장성: 도메인지식 주입 시 target 도달이 더 빨라지는가.
 
@@ -202,7 +206,8 @@
 
 ### 8.3 Future plan (방향성 확정 — 추후 단계에서 구현)
 - [ ] **측정 노이즈 대응**(§Q10, research/09): 반복측정으로 노이즈 추정 / 노이즈-aware 대리모델(분위수·NGBoost·앙상블) /
-  robust·risk-aware 목적(평균−k·표준편차, 분위수) / racing·resampling 기반 noisy EA / 신호 평균화.
+  robust·risk-aware 목적(평균−k·표준편차, 분위수) / racing·resampling 기반 noisy EA / 신호 평균화 /
+  **winner's·optimizer's curse 보정 + confirmation runs**(선택편향·평균회귀 대응, §7과 연결).
 - [ ] **유연한 도메인지식 주입 구조**(§Q9, research/10): X0(60bit) → 규칙기반 축소 → (학습)잠재공간 → … → metric 의
   **합성 가능한 표현 파이프라인**. 각 단계는 교체형 transform(현재=규칙, 추후=학습된 잠재공간/LSBO).
 - [ ] **target 지향(level-set/feasibility) 탐색**으로 성공 기준(§7)에 맞춤 최적화.
