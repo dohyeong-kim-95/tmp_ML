@@ -57,9 +57,9 @@
 - **데이터 명세(data spec) 관리** — X representation의 각 column에 대해 다음을 기록:
   - `type`(binary/categorical/ordinal/conditional), `allowed_values`, `ordered`(순서 여부),
     `source_bits`(원 X0 비트), `parent`/`active_when`(조건부 활성 규칙), `constraint`(hard/soft).
-  - **두 형태로 동시 관리**: 사람이 읽는 **문서** + 코드가 읽는 **schema 파일**(예: YAML/JSON) — 둘이 같은 사실의 단일 소스.
+  - **두 형태로 동시 관리(추후)**: 사람이 읽는 **문서** + 코드가 읽는 **schema 파일**(예: YAML/JSON) — 둘이 같은 사실의 단일 소스.
   - 이 schema가 **인코딩·feasible 후보 생성(research/04 §4.2)·DoE(research/03)·옵티마이저**가 공유하는 계약(contract)이 됨.
-  - ⚠️ 실제 값/규칙은 대외비 → 현재는 **필드 구조(스키마 틀)** 만 정의, 내용은 규칙 확보 시 채움.
+  - ⚠️ **schema/명세 파일은 내용·구조 모두 대외비가 될 가능성이 높음 → 본 repo에서 만들지 않는다. TODO로만 남김**(01 §6.1).
 
 **Phase 1 — 초기 데이터 확보 (cold start)**
 - ⚠️ **DoE는 raw X0(60bit)가 아니라 인코딩된 feature space X에서 수행.**

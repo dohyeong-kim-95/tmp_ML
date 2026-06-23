@@ -105,6 +105,7 @@
 - [ ] metric Y의 파생 규칙·값 범위·방향, **성공 threshold 정량값**
 - [ ] 실험 예산 총량(가동 가능 일수), **측정 노이즈 수준**
 - [ ] feasible/infeasible(불가능 조합) 판정 규칙
+- [ ] **(TODO) X representation 데이터 명세/schema 파일** — column별 type/allowed_values/ordered/source_bits/parent/active_when/constraint. 내용·구조가 대외비가 될 가능성이 높아 **본 repo 밖에서** 작성·관리(여기서는 코드·스키마 생성하지 않음).
 
 ### 6.2 초기 데이터 확보 후 판별 (현 단계 보류 — 데이터 없이는 단정 불가)
 - [ ] **상호작용 식별 가능 차수**: 수천~수만 표본으로 몇 차까지 신뢰 추정되는가 (research/09-B)
