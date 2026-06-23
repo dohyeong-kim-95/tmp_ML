@@ -100,8 +100,13 @@
 - 구조 규칙은 가능해지는 대로 제약/합성변수/사전지식으로 주입할 **슬롯만 비워둔다**.
 
 **Phase 1 — 초기 데이터 확보 (cold start)**
-- SUB/초기: **screening DoE**(Plackett–Burman / 분수계획 / D-optimal)로 주효과+저차 상호작용 신호 확보.
-- MAIN: 첫 며칠은 DoE + 광역 무작위로 **수천 표본**을 빠르게 모아 지도학습 대리모델의 토대를 만든다.
+- ⚠️ **DoE는 raw X0(60bit)가 아니라 인코딩된 feature space X에서 수행한다.**
+  group/mutex/conditional이 있는 raw 비트는 "독립 2수준 요인" 가정을 깨므로, **먼저 X0→X 인코딩**(그룹→범주형,
+  배타→범주형, 조건부→계층) 후 **합법 요인공간 X 위에서 설계**. (research/03, research/10)
+- SUB/초기: X 위에서 **screening 설계**. 단 제약이 있으면 PB/분수계획(직교설계)을 그대로 쓰지 말고
+  **제약-aware 최적설계(D-optimal, coordinate-exchange)** 로 — 직교설계에 repair를 가하면 균형/별칭구조가 깨짐.
+- MAIN: 첫 며칠은 (제약-aware) DoE + 광역 무작위로 **수천 표본**을 빠르게 모아 지도학습 대리모델의 토대를 만든다.
+- 세부 설계질문(candidate set·균형성·screening 범위·예산)은 research/03 §4A–4D 참조.
 
 **Phase 2 — 주력 최적화 루프 (체급별)**
 

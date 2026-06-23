@@ -38,8 +38,15 @@
   **LatentMap·shmoo예측은 슬롯으로 비워둠** → 데이터·필요 확인 후 채움.
 - 이렇게 하면 옵티마이저(MAIN/SUB)는 `repr` 위에서 동작 → **표현이 바뀌어도 옵티마이저 불변**.
 
+## 이 파이프라인이 제약 처리(#4)를 일부 해결한다
+- group/mutex/conditional은 **X0→X 인코딩 단계에서 흡수**된다(그룹→범주형, 배타→범주형, 조건부→계층).
+- 따라서 **DoE·옵티마이저는 raw X0가 아니라 인코딩된 X에서 동작**해야 한다(research/03 §제약 하 DoE).
+  - PB 등 직교설계를 raw 비트에 쓰면 독립요인 가정이 깨지는 문제가, **X 단계로 옮기고 제약-aware D-optimal을 쓰면 해소**.
+- 즉 표현 파이프라인은 "도메인지식 주입 경로"이자 동시에 "**실험설계가 합법 요인공간에서 이뤄지게 하는 기반**".
+
 > 한 줄 평: **"도메인지식을 입력 변환 레이어로 점증 주입"하는 골격은 타당하고 권장.**
 > 단 **학습된 잠재공간/shmoo 예측은 데이터 확보 후 단계적으로** 도입(현재 보류, 인터페이스만 마련).
+> **DoE/옵티마이저는 인코딩된 X 단계에서 동작**시켜 제약 문제(#4)를 구조적으로 해결.
 
 ## Sources
 - [Local Latent Space BO over Structured Inputs (NeurIPS 2022)](https://proceedings.neurips.cc/paper_files/paper/2022/file/ded98d28f82342a39f371c013dfb3058-Paper-Conference.pdf)
