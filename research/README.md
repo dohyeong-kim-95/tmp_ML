@@ -1,7 +1,7 @@
 # research/ — Shmoo Score 최대화 Baseline 리서치 모음
 
 > 작성일: 2026-06-22 · 작성: 직접 웹 리서치
-> 목적: `goal.md`에 정의된 문제(N>60 binary → score 최대화, 데이터 0건,
+> 목적: `01_Problem_def.md`에 정의된 문제(N>60 binary → metric 최대화, 데이터 0건,
 > 하루 ~40개 비싼 배치 평가, 15주, 반복 시간 제약, 구조 추후 주입)에 대한
 > baseline 방법론 근거 수집.
 
