@@ -8,7 +8,6 @@
 import json
 import warnings
 import numpy as np
-import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -27,26 +26,16 @@ SEEDS_BO = [0, 1, 2]   # BO는 비용이 커 seed 3회
 prob = Problem()
 
 # ---------------- 참조 기준선 ----------------
-# (1) 데이터셋 최대: 실측 2000행에서의 ΣY
-df = pd.read_csv("data/dummy_data.csv")
-J_data_noisy = df[prob.y_cols].sum(axis=1).max()          # 노이즈 포함 실측
-J_data_clean = max(prob.response_sum_row(r) for _, r in df[prob.vars].iterrows()) \
-    if hasattr(prob, "response_sum_row") else \
-    max(prob.objective({c: (r[c] if prob.meta[c][0] == "cat" else int(r[c]))
-                        for c in prob.vars}) for _, r in df[prob.vars].iterrows())
-prob.n_eval = 0  # 위 계산은 카운트에서 제외
-
-# (2) 선형근사 최적, (3) 좌표상승 best-known
+# A 패러다임: 목적함수 = ground_truth 비밀식 자체. dataset은 불필요.
+# (1) 선형근사 최적, (2) 좌표상승 best-known(전역최적)
 x_lin = prob.linear_optimum(); J_lin = prob.objective(x_lin)
 rng = np.random.default_rng(123)
 x_best, J_best = prob.coordinate_ascent(rng, restarts=40)
 
 print("=" * 66)
 print("참조 기준선")
-print(f"  데이터셋 ΣY 최대 (실측, 노이즈 포함) = {J_data_noisy:8.3f}")
-print(f"  데이터셋 X에서의 ΣY 최대 (노이즈 제거)= {J_data_clean:8.3f}")
-print(f"  선형근사 최적                         = {J_lin:8.3f}")
-print(f"  좌표상승 best-known (near-global)     = {J_best:8.3f}   <- 비교 기준")
+print(f"  선형근사 최적(교호작용 무시)      = {J_lin:8.3f}")
+print(f"  좌표상승 best-known (전역최적)    = {J_best:8.3f}   <- 비교 기준")
 print("=" * 66)
 
 ALGOS = {
@@ -89,10 +78,8 @@ with open("optimize/results.csv", "w", newline="") as f:
                     f"{r['std']:.3f}", f"{r['worst']:.3f}",
                     f"{r['gap_to_best_pct']:.2f}"])
 
-out = {"reference": {"J_dataset_noisy": float(J_data_noisy),
-                     "J_dataset_clean": float(J_data_clean),
-                     "J_linear": J_lin, "J_near_optimal": J_best,
-                     "x_near_optimal": x_best},
+out = {"reference": {"J_linear": J_lin, "J_global_optimum": J_best,
+                     "x_global_optimum": x_best},
        "algorithms": {}}
 for name in ALGOS:
     out["algorithms"][name] = {
@@ -102,13 +89,16 @@ for name in ALGOS:
 with open("optimize/best_solutions.json", "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False, indent=2)
 
+# 수렴곡선 캐시(재플롯 비용 절감)
+xs = np.linspace(0, MAX_EVAL, 500)
+np.savez("optimize/curves.npz", xs=xs, J_best=J_best, J_lin=J_lin,
+         **{name: curves[name] for name in ALGOS})
+
 # ---------------- 수렴곡선 ----------------
 plt.figure(figsize=(8, 5))
-xs = np.linspace(0, MAX_EVAL, 500)
 for name in ALGOS:
     plt.plot(xs, curves[name], label=name, lw=2)
-plt.axhline(J_best, ls="--", c="k", lw=1, label="near-optimal")
-plt.axhline(J_data_clean, ls="-.", c="crimson", lw=1, label="dataset max")
+plt.axhline(J_best, ls="--", c="k", lw=1, label="global optimum")
 plt.axhline(J_lin, ls=":", c="gray", lw=1, label="linear approx.")
 plt.xlabel("objective evaluations"); plt.ylabel("best J(X) = Σ Y")
 plt.title(f"SA vs PSO vs GA vs BO  (budget={MAX_EVAL})")
