@@ -60,16 +60,23 @@ def _candidates(prob, best_x, rng, n_rand=400, n_mut=400):
 
 
 def bayesian_optimization(prob, max_eval=5000, n_init=20,
-                          gp_cap=180, refit_every=25, seed=0, deadline=None):
+                          gp_cap=180, refit_every=25, seed=0, deadline=None,
+                          warm=None):
     rng = np.random.default_rng(seed)
     enc = Encoder(prob)
 
-    # --- 초기 설계 (무작위) ---
+    # --- 초기 관측 ---
     X_raw, X_feat, Y = [], [], []
-    for _ in range(n_init):
-        x = prob.random_solution(rng)
-        X_raw.append(x); X_feat.append(enc.encode(x))
-        Y.append(prob.objective(x))
+    if warm is not None:
+        # warm = (X_dicts, Y_values): 과거에 쌓인 '공짜' 관측으로 GP 사전 시드
+        wx, wy = warm
+        for x, y in zip(wx, wy):
+            X_raw.append(dict(x)); X_feat.append(enc.encode(x)); Y.append(float(y))
+    else:
+        for _ in range(n_init):
+            x = prob.random_solution(rng)
+            X_raw.append(x); X_feat.append(enc.encode(x))
+            Y.append(prob.objective(x))   # cold-start init은 예산 소모
     X_feat = list(X_feat); Y = list(Y)
 
     best_i = int(np.argmax(Y))
