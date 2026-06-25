@@ -148,30 +148,19 @@ with open("optimize/results_time.csv", "w", newline="") as f:
 
 
 # ============================================================
-# 3) 플롯 (3col × 2row)
+# 3) 곡선 데이터 캐시 + 플롯 (3col × 2row)
 # ============================================================
-def plot(curves, mode, fname):
-    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
-    axes = axes.ravel()
-    for ax, case in zip(axes, CASES):
-        for name in ALGOS:
-            xaxis, y, wt, ne = curves[case][name]
-            label = f"{name}(t={wt:.1f}s)" if mode == "eval" else f"{name}(n={ne})"
-            ax.plot(xaxis, y, label=label, lw=1.7)
-        ax.axhline(J_star[case], ls="--", c="k", lw=1)
-        ci = next(r["complexity_idx"] for r in cx_rows if r["case"] == case)
-        ax.set_title(f"{case}  (J*={J_star[case]:.1f}, 복잡도={ci})")
-        ax.set_xlabel("evaluations" if mode == "eval" else "wall-clock time (s)")
-        ax.set_ylabel("best J(X)=ΣY"); ax.grid(alpha=0.3); ax.legend(fontsize=7)
-    ttl = "EVAL budget" if mode == "eval" else f"TIME budget (T={TIME_BUDGET}s)"
-    plt.suptitle(f"SA vs PSO(bin) vs GA vs BO vs TPE vs SMAC  —  {ttl}", fontsize=14)
-    plt.tight_layout()
-    plt.savefig(fname, dpi=110)
-    print(f"saved: {fname}")
+import pickle
+from plot_cases import make_plots
 
+cx_idx = {r["case"]: r["complexity_idx"] for r in cx_rows}
+plot_data = {"cases": list(CASES), "algos": list(ALGOS),
+             "curves": {"eval": cur_eval, "time": cur_time},
+             "J_star": J_star, "cx_idx": cx_idx, "time_budget": TIME_BUDGET}
+with open("optimize/curves.pkl", "wb") as f:
+    pickle.dump(plot_data, f)
 
-plot(cur_eval, "eval", "optimize/convergence_eval.png")
-plot(cur_time, "time", "optimize/convergence_time.png")
+make_plots(plot_data)
 
 # best solutions
 best_json = {"J_star": J_star, "complexity": {r["case"]: r for r in cx_rows}}
