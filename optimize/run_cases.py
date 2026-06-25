@@ -24,7 +24,8 @@ from genetic_algorithm import genetic_algorithm
 from bayesian_optimization import bayesian_optimization
 
 warnings.filterwarnings("ignore")
-BUDGET = 3000
+BUDGET = 3000           # SA/PSO/GA 평가예산
+BO_BUDGET = 500         # BO는 샘플효율이 좋아 500이면 수렴
 SEEDS = [0, 1, 2]       # SA/PSO/GA
 SEEDS_BO = [0, 1]       # BO는 비용이 커 2회
 
@@ -40,8 +41,9 @@ ALGOS = {
     "SA":  (lambda p, s: simulated_annealing(p, max_eval=BUDGET, seed=s), SEEDS),
     "PSO": (lambda p, s: particle_swarm(p, max_eval=BUDGET, seed=s), SEEDS),
     "GA":  (lambda p, s: genetic_algorithm(p, max_eval=BUDGET, seed=s), SEEDS),
-    "BO":  (lambda p, s: bayesian_optimization(p, max_eval=BUDGET, seed=s), SEEDS_BO),
+    "BO":  (lambda p, s: bayesian_optimization(p, max_eval=BO_BUDGET, seed=s), SEEDS_BO),
 }
+ALGO_BUDGET = {"SA": BUDGET, "PSO": BUDGET, "GA": BUDGET, "BO": BO_BUDGET}
 
 all_rows = []
 all_curves = {}
@@ -72,9 +74,12 @@ for case, gt_path in CASES.items():
                          "best": round(finals.max(), 3), "mean": round(finals.mean(), 3),
                          "std": round(finals.std(), 3), "gap_pct": round(gap, 2)})
         all_best[case][name] = {"J": float(finals.max()), "x": best_x}
+        # 각 알고리즘의 실제 예산축에 맞춰 곡선 보간
+        bud = ALGO_BUDGET[name]
+        gx = np.linspace(0, bud, 400)
         arr = np.array([np.interp(np.linspace(0, 1, 400),
                                   np.linspace(0, 1, len(h)), h) for h in hist_list])
-        all_curves[case][name] = arr.mean(axis=0)
+        all_curves[case][name] = (gx, arr.mean(axis=0))
         print(f"  {name:3}  best={finals.max():8.3f}  mean={finals.mean():8.3f}"
               f"  std={finals.std():6.3f}  gap={gap:6.2f}%")
 
@@ -92,11 +97,11 @@ with open("optimize/best_solutions_cases.json", "w", encoding="utf-8") as f:
                "results": all_best}, f, ensure_ascii=False, indent=2)
 
 # ---------------- 수렴곡선 (Case별 subplot) ----------------
-xs = np.linspace(0, BUDGET, 400)
 fig, axes = plt.subplots(1, 5, figsize=(22, 4.2), sharey=False)
 for ax, case in zip(axes, CASES):
     for name in ALGOS:
-        ax.plot(xs, all_curves[case][name], label=name, lw=1.8)
+        gx, gy = all_curves[case][name]
+        ax.plot(gx, gy, label=f"{name}({ALGO_BUDGET[name]})", lw=1.8)
     ax.axhline(ref[case], ls="--", c="k", lw=1, label="global opt")
     ax.set_title(f"{case}  (J*={ref[case]:.1f})")
     ax.set_xlabel("evaluations"); ax.grid(alpha=0.3)
