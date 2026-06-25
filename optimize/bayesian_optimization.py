@@ -79,9 +79,17 @@ def bayesian_optimization(prob, max_eval=5000, n_init=20,
             Y.append(prob.objective(x))   # cold-start init은 예산 소모
     X_feat = list(X_feat); Y = list(Y)
 
-    best_i = int(np.argmax(Y))
-    best_x, best_f = dict(X_raw[best_i]), Y[best_i]
-    history = [max(Y[:i + 1]) for i in range(len(Y))]
+    if warm is not None:
+        # warm 라벨은 노이즈 포함 → incumbent/보고에 직접 쓰지 않는다.
+        # best_*는 BO가 '실제(clean) 목적함수로 평가한 점'만으로 추적.
+        best_x, best_f = None, -1e18
+        mut_seed = dict(X_raw[int(np.argmax(Y))])   # 후보 생성용 시드(과거 best)
+        history = []
+    else:
+        best_i = int(np.argmax(Y))
+        best_x, best_f = dict(X_raw[best_i]), Y[best_i]
+        mut_seed = best_x
+        history = [max(Y[:i + 1]) for i in range(len(Y))]
 
     kernel = (ConstantKernel(1.0, (1e-2, 1e3))
               * Matern(length_scale=1.0, length_scale_bounds=(1e-2, 1e2), nu=2.5)
@@ -109,12 +117,14 @@ def bayesian_optimization(prob, max_eval=5000, n_init=20,
             gp.set_params(optimizer=None)
         gp.fit(Xt, Yt)
 
-        # 후보 EI 평가
-        cands = _candidates(prob, best_x, rng)
+        # EI incumbent: clean 평가가 있으면 그 best, 없으면(warm 초기) 사후평균 최댓값(denoised)
+        inc = best_f if best_f > -1e17 else float(gp.predict(Xt).max())
+
+        cands = _candidates(prob, mut_seed, rng)
         Cf = np.array([enc.encode(c) for c in cands])
         mu, sd = gp.predict(Cf, return_std=True)
         sd = np.maximum(sd, 1e-9)
-        imp = mu - best_f
+        imp = mu - inc
         z = imp / sd
         ei = imp * norm.cdf(z) + sd * norm.pdf(z)
         order = np.argsort(ei)[::-1]
@@ -124,7 +134,7 @@ def bayesian_optimization(prob, max_eval=5000, n_init=20,
         f = prob.objective(chosen)
         X_raw.append(chosen); X_feat.append(enc.encode(chosen)); Y.append(f)
         if f > best_f:
-            best_f, best_x = f, dict(chosen)
+            best_f, best_x, mut_seed = f, dict(chosen), dict(chosen)
         history.append(best_f)
         step += 1
         if deadline and time.time() > deadline:
