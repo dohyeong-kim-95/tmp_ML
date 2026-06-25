@@ -32,16 +32,17 @@ all_x = bin_cols + ord_cols + cat_cols
 
 
 def level_params(d):
-    """난이도 d(2~5) -> 생성 파라미터."""
+    """난이도 d(2~6) -> 생성 파라미터. (d<=5는 기존과 동일)"""
     return dict(
-        n_strong=3 + d,                 # d2=5  ... d5=8
-        n_weak=8 + 5 * (d - 1),         # d2=13 ... d5=28
-        n_inter2=1 + 2 * (d - 1),       # d2=3  ... d5=9
-        n_quad=(d - 1),                 # d2=1  ... d5=4
-        n_inter3=max(0, d - 2),         # d3=1  ... d5=3
-        noise_mult=1.0 + 0.8 * (d - 1), # d2=1.8 ... d5=4.4
-        cat_scale=2.0 + 0.7 * (d - 1),  # d2=2.7 ... d5=4.8
-        outlier_frac=0.0 if d < 4 else 0.04 * (d - 3),  # d4=4%, d5=8%
+        n_strong=3 + d,                 # d2=5  ... d6=9
+        n_weak=8 + 5 * (d - 1),         # d2=13 ... d6=33
+        n_inter2=1 + 2 * (d - 1),       # d2=3  ... d6=11
+        n_quad=(d - 1),                 # d2=1  ... d6=5
+        n_inter3=max(0, d - 2),         # d3=1  ... d6=4
+        n_inter4=2 * max(0, d - 5),     # d6=2  (4차 교호작용, Case6부터)
+        noise_mult=1.0 + 0.8 * (d - 1), # d2=1.8 ... d6=5.0
+        cat_scale=2.0 + 0.7 * (d - 1),  # d2=2.7 ... d6=5.5
+        outlier_frac=0.0 if d < 4 else 0.04 * (d - 3),  # d4=4% d5=8% d6=12%
     )
 
 
@@ -74,7 +75,8 @@ def make_dataset(d, seed):
         strong = {v: float(rng.choice([-1, 1]) * rng.uniform(3.0, 6.0))
                   for v in strong_vars}
         remain = [c for c in num_pool if c not in strong_vars]
-        weak_vars = list(rng.choice(remain, P["n_weak"], replace=False))
+        weak_vars = list(rng.choice(remain, min(P["n_weak"], len(remain)),
+                                    replace=False))
         weak = {v: float(rng.choice([-1, 1]) * rng.uniform(0.1, 0.6))
                 for v in weak_vars}
 
@@ -95,6 +97,11 @@ def make_dataset(d, seed):
             inters.append({"vars": [str(a), str(b), str(c)],
                            "coef": float(rng.choice([-1, 1]) * rng.uniform(1.0, 3.0)),
                            "kind": "3way"})
+        for _ in range(P.get("n_inter4", 0)):
+            vs = list(rng.choice(pool, 4, replace=False))
+            inters.append({"vars": [str(v) for v in vs],
+                           "coef": float(rng.choice([-1, 1]) * rng.uniform(1.0, 3.0)),
+                           "kind": "4way"})
 
         cat_eff = {}
         for c in cat_cols:
@@ -152,14 +159,15 @@ def summarize(d, df, gt, P):
                   for s in gt["responses"].values())
     return {"case": f"case{d}", "n_strong/Y": P["n_strong"], "n_weak/Y": P["n_weak"],
             "n_inter2/Y": P["n_inter2"], "n_quad/Y": P["n_quad"],
-            "n_inter3/Y": P["n_inter3"], "noise_mult": round(P["noise_mult"], 2),
+            "n_inter3/Y": P["n_inter3"], "n_inter4/Y": P.get("n_inter4", 0),
+            "noise_mult": round(P["noise_mult"], 2),
             "outlier%": round(P["outlier_frac"] * 100, 1),
             "total_terms": n_terms, "ΣY_std": round(float(sumY.std()), 2)}
 
 
 if __name__ == "__main__":
     rows = []
-    for d in [2, 3, 4, 5]:
+    for d in [2, 3, 4, 5, 6]:
         df, gt, P, ordl = make_dataset(d, seed=42 + d)
         os.makedirs(f"data/case{d}", exist_ok=True)
         df.to_csv(f"data/case{d}/dummy_data.csv", index=False)

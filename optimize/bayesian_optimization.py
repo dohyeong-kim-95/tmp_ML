@@ -10,6 +10,7 @@ Vanilla Bayesian Optimization (GP + Expected Improvement).
 주의: GP는 관측수 n 에 대해 O(n^3). 5000 eval 예산을 위해
       학습점을 best+recent 일부(cap)로 제한하는 표준 실무 기법을 쓴다.
 """
+import time
 import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
@@ -59,7 +60,7 @@ def _candidates(prob, best_x, rng, n_rand=400, n_mut=400):
 
 
 def bayesian_optimization(prob, max_eval=5000, n_init=20,
-                          gp_cap=180, refit_every=25, seed=0):
+                          gp_cap=180, refit_every=25, seed=0, deadline=None):
     rng = np.random.default_rng(seed)
     enc = Encoder(prob)
 
@@ -119,5 +120,7 @@ def bayesian_optimization(prob, max_eval=5000, n_init=20,
             best_f, best_x = f, dict(chosen)
         history.append(best_f)
         step += 1
+        if deadline and time.time() > deadline:
+            break
 
     return best_x, best_f, history

@@ -1,4 +1,5 @@
 """Simulated Annealing (혼합 이산공간)."""
+import time
 import numpy as np
 
 
@@ -22,7 +23,8 @@ def neighbor(x, prob, rng):
     return nx
 
 
-def simulated_annealing(prob, max_eval=20000, T0=10.0, Tend=1e-3, seed=0):
+def simulated_annealing(prob, max_eval=20000, T0=10.0, Tend=1e-3, seed=0,
+                        deadline=None):
     rng = np.random.default_rng(seed)
     x = prob.random_solution(rng)
     fx = prob.objective(x)
@@ -43,4 +45,6 @@ def simulated_annealing(prob, max_eval=20000, T0=10.0, Tend=1e-3, seed=0):
                 best_f, best_x = fx, dict(x)
         history.append(best_f)
         T *= alpha
+        if deadline and time.time() > deadline:
+            break
     return best_x, best_f, history

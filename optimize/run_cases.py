@@ -1,16 +1,17 @@
 """
-Case 1~5 (난이도 점증)에 대해 SA / PSO / GA / BO 검증.
+Case1~6 × 6개 알고리즘(SA / PSO(binary) / GA / BO / TPE / SMAC) 검증.
 
-A 패러다임: 목적함수 = 각 Case 의 ground_truth 비밀식 (dataset CSV 불필요).
-  Case1 = data/ground_truth.json (최저 난이도)
-  Case2~5 = data/case{n}/ground_truth.json (점점 복잡·노이즈↑)
+두 가지 예산 모드:
+  (1) EVAL 예산  : SA/PSO/GA = 2000 평가, BO/TPE/SMAC = 500 평가 (샘플효율형)
+  (2) TIME 예산  : 모든 알고리즘에 동일 wall-clock T초 부여 → 각자 가능한 만큼 평가
 
-예산 budget=3000, 각 Case 마다:
-  - 전역최적 참조(좌표상승 다중 재시작)
-  - 4 알고리즘 best/mean/std/gap
-산출: results_cases.csv, best_solutions_cases.json, convergence_cases.png
+추가:
+  - Case별 복잡도 정량화 (complexity.py)
+  - 수렴곡선 3col×2row PNG (EVAL/TIME 각각)
+  - 범례 표기: EVAL모드 = ALGO(t=평균 wall-time), TIME모드 = ALGO(n=평균 평가수)
 """
 import json
+import time
 import warnings
 import numpy as np
 import matplotlib
@@ -19,15 +20,14 @@ import matplotlib.pyplot as plt
 
 from problem import Problem
 from simulated_annealing import simulated_annealing
-from particle_swarm import particle_swarm
+from binary_pso import binary_pso
 from genetic_algorithm import genetic_algorithm
 from bayesian_optimization import bayesian_optimization
+from tpe import tpe
+from smac import smac
+from complexity import case_complexity, complexity_index
 
 warnings.filterwarnings("ignore")
-BUDGET = 3000           # SA/PSO/GA 평가예산
-BO_BUDGET = 500         # BO는 샘플효율이 좋아 500이면 수렴
-SEEDS = [0, 1, 2]       # SA/PSO/GA
-SEEDS_BO = [0, 1]       # BO는 비용이 커 2회
 
 CASES = {
     "Case1": "data/ground_truth.json",
@@ -35,86 +35,161 @@ CASES = {
     "Case3": "data/case3/ground_truth.json",
     "Case4": "data/case4/ground_truth.json",
     "Case5": "data/case5/ground_truth.json",
+    "Case6": "data/case6/ground_truth.json",
 }
 
+# 알고리즘: 함수 + EVAL예산 + seed수
 ALGOS = {
-    "SA":  (lambda p, s: simulated_annealing(p, max_eval=BUDGET, seed=s), SEEDS),
-    "PSO": (lambda p, s: particle_swarm(p, max_eval=BUDGET, seed=s), SEEDS),
-    "GA":  (lambda p, s: genetic_algorithm(p, max_eval=BUDGET, seed=s), SEEDS),
-    "BO":  (lambda p, s: bayesian_optimization(p, max_eval=BO_BUDGET, seed=s), SEEDS_BO),
+    "SA":   dict(fn=simulated_annealing, evals=2000, seeds=[0, 1, 2]),
+    "PSO":  dict(fn=binary_pso,          evals=2000, seeds=[0, 1, 2]),
+    "GA":   dict(fn=genetic_algorithm,   evals=2000, seeds=[0, 1, 2]),
+    "BO":   dict(fn=bayesian_optimization, evals=500, seeds=[0, 1]),
+    "TPE":  dict(fn=tpe,                 evals=500,  seeds=[0, 1]),
+    "SMAC": dict(fn=smac,                evals=500,  seeds=[0, 1]),
 }
-ALGO_BUDGET = {"SA": BUDGET, "PSO": BUDGET, "GA": BUDGET, "BO": BO_BUDGET}
+TIME_BUDGET = 3.0   # TIME 모드 wall-clock 초
+GRID = 300
 
-all_rows = []
-all_curves = {}
-all_best = {}
-ref = {}
 
-for case, gt_path in CASES.items():
-    prob = Problem(gt_path=gt_path)
-    # 전역최적 참조
-    rng = np.random.default_rng(123)
-    x_opt, J_opt = prob.coordinate_ascent(rng, restarts=60)
-    ref[case] = J_opt
-    all_curves[case] = {}
-    all_best[case] = {}
-    print(f"\n===== {case}  (전역최적 J* = {J_opt:.3f}) =====")
+def run_one(fn, prob, seed, max_eval, deadline):
+    prob.n_eval = 0
+    t0 = time.time()
+    x, f, hist = fn(prob, max_eval=max_eval, seed=seed, deadline=deadline)
+    return x, f, hist, time.time() - t0, prob.n_eval
 
-    for name, (fn, seeds) in ALGOS.items():
-        finals, best_f, best_x, hist_list = [], -1e18, None, []
-        for s in seeds:
-            prob.n_eval = 0
-            x, f, hist = fn(prob, s)
-            finals.append(f); hist_list.append(hist)
-            if f > best_f:
-                best_f, best_x = f, x
-        finals = np.array(finals)
-        gap = (J_opt - finals.max()) / abs(J_opt) * 100
-        all_rows.append({"case": case, "algo": name, "J_opt": round(J_opt, 3),
-                         "best": round(finals.max(), 3), "mean": round(finals.mean(), 3),
-                         "std": round(finals.std(), 3), "gap_pct": round(gap, 2)})
-        all_best[case][name] = {"J": float(finals.max()), "x": best_x}
-        # 각 알고리즘의 실제 예산축에 맞춰 곡선 보간
-        bud = ALGO_BUDGET[name]
-        gx = np.linspace(0, bud, 400)
-        arr = np.array([np.interp(np.linspace(0, 1, 400),
-                                  np.linspace(0, 1, len(h)), h) for h in hist_list])
-        all_curves[case][name] = (gx, arr.mean(axis=0))
-        print(f"  {name:3}  best={finals.max():8.3f}  mean={finals.mean():8.3f}"
-              f"  std={finals.std():6.3f}  gap={gap:6.2f}%")
 
-# ---------------- 저장 ----------------
+# ============================================================
+# 1) Case 복잡도 + 전역최적 참조
+# ============================================================
+print("Case 복잡도 계산 중...")
+cx_rows = []
+J_star = {}
+probs = {}
+for case, path in CASES.items():
+    p = Problem(gt_path=path)
+    probs[case] = p
+    cx = case_complexity(p, restarts=60, seed=0)
+    cx["case"] = case
+    cx_rows.append(cx)
+    J_star[case] = cx["J_star"]
+cx_index = complexity_index(cx_rows)
+for r, ci in zip(cx_rows, cx_index):
+    r["complexity_idx"] = ci
+
+print("\n=== Case 복잡도 정량화 ===")
+hdr = ["case", "n_terms", "max_order", "n_highorder", "linear_gap%",
+       "n_local_opt", "trap_rate%", "complexity_idx", "J_star"]
+print("  ".join(f"{h:>12}" for h in hdr))
+for r in cx_rows:
+    print("  ".join(f"{r[h]:>12}" for h in hdr))
+
 import csv
-with open("optimize/results_cases.csv", "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=["case", "algo", "J_opt", "best",
-                                      "mean", "std", "gap_pct"])
+with open("optimize/complexity.csv", "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=hdr)
     w.writeheader()
-    for r in all_rows:
-        w.writerow(r)
+    for r in cx_rows:
+        w.writerow({h: r[h] for h in hdr})
 
+
+# ============================================================
+# 2) 두 모드 실행
+# ============================================================
+def execute(mode):
+    """mode='eval' or 'time'. 반환: results(list), curves[case][algo]=(x,y), legends"""
+    results, curves = [], {c: {} for c in CASES}
+    for case in CASES:
+        prob = probs[case]
+        for name, cfg in ALGOS.items():
+            seeds = cfg["seeds"]
+            finals, times, nevals, hist_list, best_x, best_f = [], [], [], [], None, -1e18
+            for s in seeds:
+                if mode == "eval":
+                    x, f, h, wt, ne = run_one(cfg["fn"], prob, s, cfg["evals"], None)
+                else:
+                    dl = time.time() + TIME_BUDGET
+                    x, f, h, wt, ne = run_one(cfg["fn"], prob, s, 10_000_000, dl)
+                finals.append(f); times.append(wt); nevals.append(ne); hist_list.append(h)
+                if f > best_f:
+                    best_f, best_x = f, x
+            finals = np.array(finals)
+            gap = (J_star[case] - finals.max()) / abs(J_star[case]) * 100
+            results.append({"mode": mode, "case": case, "algo": name,
+                            "best": round(float(finals.max()), 3),
+                            "mean": round(float(finals.mean()), 3),
+                            "std": round(float(finals.std()), 3),
+                            "gap_pct": round(float(gap), 2),
+                            "wall_s": round(float(np.mean(times)), 2),
+                            "n_eval": int(np.mean(nevals))})
+            # 곡선: 각 seed history를 공통 그리드로 보간 후 평균
+            if mode == "eval":
+                xaxis = np.linspace(0, cfg["evals"], GRID)
+            else:
+                xaxis = np.linspace(0, TIME_BUDGET, GRID)
+            interp = []
+            for h in hist_list:
+                interp.append(np.interp(np.linspace(0, 1, GRID),
+                                        np.linspace(0, 1, len(h)), h))
+            curves[case][name] = (xaxis, np.mean(interp, axis=0),
+                                  float(np.mean(times)), int(np.mean(nevals)))
+    return results, curves
+
+
+print(f"\nEVAL 모드 실행...")
+res_eval, cur_eval = execute("eval")
+print(f"TIME 모드 실행 (T={TIME_BUDGET}s)...")
+res_time, cur_time = execute("time")
+
+with open("optimize/results_eval.csv", "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=list(res_eval[0].keys()))
+    w.writeheader(); [w.writerow(r) for r in res_eval]
+with open("optimize/results_time.csv", "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=list(res_time[0].keys()))
+    w.writeheader(); [w.writerow(r) for r in res_time]
+
+
+# ============================================================
+# 3) 플롯 (3col × 2row)
+# ============================================================
+def plot(curves, mode, fname):
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
+    axes = axes.ravel()
+    for ax, case in zip(axes, CASES):
+        for name in ALGOS:
+            xaxis, y, wt, ne = curves[case][name]
+            label = f"{name}(t={wt:.1f}s)" if mode == "eval" else f"{name}(n={ne})"
+            ax.plot(xaxis, y, label=label, lw=1.7)
+        ax.axhline(J_star[case], ls="--", c="k", lw=1)
+        ci = next(r["complexity_idx"] for r in cx_rows if r["case"] == case)
+        ax.set_title(f"{case}  (J*={J_star[case]:.1f}, 복잡도={ci})")
+        ax.set_xlabel("evaluations" if mode == "eval" else "wall-clock time (s)")
+        ax.set_ylabel("best J(X)=ΣY"); ax.grid(alpha=0.3); ax.legend(fontsize=7)
+    ttl = "EVAL budget" if mode == "eval" else f"TIME budget (T={TIME_BUDGET}s)"
+    plt.suptitle(f"SA vs PSO(bin) vs GA vs BO vs TPE vs SMAC  —  {ttl}", fontsize=14)
+    plt.tight_layout()
+    plt.savefig(fname, dpi=110)
+    print(f"saved: {fname}")
+
+
+plot(cur_eval, "eval", "optimize/convergence_eval.png")
+plot(cur_time, "time", "optimize/convergence_time.png")
+
+# best solutions
+best_json = {"J_star": J_star, "complexity": {r["case"]: r for r in cx_rows}}
 with open("optimize/best_solutions_cases.json", "w", encoding="utf-8") as f:
-    json.dump({"budget": BUDGET, "reference_global_opt": ref,
-               "results": all_best}, f, ensure_ascii=False, indent=2)
+    json.dump(best_json, f, ensure_ascii=False, indent=2)
 
-# ---------------- 수렴곡선 (Case별 subplot) ----------------
-fig, axes = plt.subplots(1, 5, figsize=(22, 4.2), sharey=False)
-for ax, case in zip(axes, CASES):
+
+# ============================================================
+# 4) gap 요약 (두 모드)
+# ============================================================
+def gap_table(results, mode):
+    print(f"\n=== gap(%) [{mode} 모드] — 전역최적 대비 ===")
+    print(f"{'algo':5} " + " ".join(f"{c:>7}" for c in CASES))
     for name in ALGOS:
-        gx, gy = all_curves[case][name]
-        ax.plot(gx, gy, label=f"{name}({ALGO_BUDGET[name]})", lw=1.8)
-    ax.axhline(ref[case], ls="--", c="k", lw=1, label="global opt")
-    ax.set_title(f"{case}  (J*={ref[case]:.1f})")
-    ax.set_xlabel("evaluations"); ax.grid(alpha=0.3)
-axes[0].set_ylabel("best J(X)=ΣY")
-axes[0].legend(fontsize=8)
-plt.suptitle(f"SA vs PSO vs GA vs BO across Case1~5  (budget={BUDGET})")
-plt.tight_layout()
-plt.savefig("optimize/convergence_cases.png", dpi=110)
-print("\nsaved: results_cases.csv, best_solutions_cases.json, convergence_cases.png")
+        g = {r["case"]: r["gap_pct"] for r in results if r["algo"] == name}
+        print(f"{name:5} " + " ".join(f"{g[c]:7.2f}" for c in CASES))
 
-# ---------------- gap 요약 표 ----------------
-print("\n=== gap(%) 요약: 전역최적 대비 (낮을수록 좋음) ===")
-print(f"{'algo':4} " + " ".join(f"{c:>8}" for c in CASES))
-for name in ALGOS:
-    gaps = {r["case"]: r["gap_pct"] for r in all_rows if r["algo"] == name}
-    print(f"{name:4} " + " ".join(f"{gaps[c]:8.2f}" for c in CASES))
+
+gap_table(res_eval, "EVAL")
+gap_table(res_time, "TIME")
+print("\n완료.")

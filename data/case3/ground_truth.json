@@ -9,6 +9,7 @@
       "n_inter2": 5,
       "n_quad": 2,
       "n_inter3": 1,
+      "n_inter4": 0,
       "noise_mult": 2.6,
       "cat_scale": 3.4,
       "outlier_frac": 0.0

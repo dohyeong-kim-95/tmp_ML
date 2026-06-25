@@ -7,6 +7,7 @@ Vanilla Genetic Algorithm (혼합 이산공간).
 - 돌연변이: 유전자별 확률 pm 로 도메인 내 무작위 재샘플
 - 엘리트  : 최상 1개 보존
 """
+import time
 import numpy as np
 
 
@@ -30,7 +31,8 @@ def tournament(pop_f, rng, k=3):
     return idx[np.argmax(pop_f[idx])]
 
 
-def genetic_algorithm(prob, max_eval=20000, pop_size=80, pm=None, seed=0):
+def genetic_algorithm(prob, max_eval=20000, pop_size=80, pm=None, seed=0,
+                      deadline=None):
     rng = np.random.default_rng(seed)
     n_genes = len(prob.vars)
     pm = pm if pm is not None else 1.0 / n_genes  # 유전자당 기대 1회
@@ -63,5 +65,7 @@ def genetic_algorithm(prob, max_eval=20000, pop_size=80, pm=None, seed=0):
         if fit[gi] > best_f:
             best_f, best_chrom = fit[gi], list(pop[gi])
         history.append(best_f)
+        if deadline and time.time() > deadline:
+            break
 
     return to_dict(prob, best_chrom), best_f, history

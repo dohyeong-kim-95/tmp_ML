@@ -12,7 +12,8 @@
 | Case2 | `data/case2/ground_truth.json` | quadratic(자기 비선형) 등장 |
 | Case3 | `data/case3/ground_truth.json` | 3차 교호작용 등장 |
 | Case4 | `data/case4/ground_truth.json` | outlier(두꺼운 꼬리) 잡음 4% |
-| Case5 | `data/case5/ground_truth.json` | 최고 난이도, outlier 8% |
+| Case5 | `data/case5/ground_truth.json` | outlier 8% |
+| Case6 | `data/case6/ground_truth.json` | 최고 난이도, **4차 교호작용** 등장, outlier 12% |
 
 ## 난이도 스케일 (Y당 평균)
 
@@ -23,11 +24,17 @@
 | Case3 | 6 | 18 | 5 | 2 | 1 | 2.6 | 0 | 128 | 19.7 |
 | Case4 | 7 | 23 | 7 | 3 | 2 | 3.4 | 4 | 168 | 29.4 |
 | Case5 | 8 | 28 | 9 | 4 | 3 | 4.2 | 8 | 208 | 40.8 |
+| Case6 | 9 | 27* | 11 | 5 | 4(+4way 2) | 5.0 | 12 | 232 | 52.3 |
+
+\* Case6의 weak는 가용 변수 한계로 27개로 cap.
 
 복잡도가 올라가는 축:
 - **main effect 수↑** (강·약 인자 모두 증가)
-- **고차 결합↑**: 2차 교호작용 → quadratic(자기 비선형) → 3차 교호작용
-- **노이즈↑**: 표준편차 배수 1.8→4.2, Case4·5는 outlier(잡음×5) 추가
+- **고차 결합↑**: 2차 교호작용 → quadratic → 3차 교호작용 → **4차 교호작용(Case6)**
+- **노이즈↑**: 표준편차 배수 1.8→5.0, Case4~6는 outlier(잡음×5) 추가
+
+> 최적화 난이도는 `optimize/complexity.py` 로 정량화 (항 수·최대차수·다봉성·
+> 선형근사 gap 등을 0~100 종합지수로). 결과는 `optimize/complexity.csv`.
 
 > 노이즈/outlier 는 **dataset CSV 생성**에만 영향(A 패러다임 최적화는 노이즈 없는
 > 비밀식을 직접 다루므로 무관). 즉 최적화 난이도는 항 수·고차결합이 좌우한다.
