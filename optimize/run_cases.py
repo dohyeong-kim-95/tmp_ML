@@ -25,6 +25,7 @@ from genetic_algorithm import genetic_algorithm
 from bayesian_optimization import bayesian_optimization
 from tpe import tpe
 from smac import smac
+from aco import aco
 from complexity import case_complexity, complexity_index
 
 warnings.filterwarnings("ignore")
@@ -43,6 +44,7 @@ ALGOS = {
     "SA":   dict(fn=simulated_annealing, evals=2000, seeds=[0, 1, 2]),
     "PSO":  dict(fn=binary_pso,          evals=2000, seeds=[0, 1, 2]),
     "GA":   dict(fn=genetic_algorithm,   evals=2000, seeds=[0, 1, 2]),
+    "ACO":  dict(fn=aco,                 evals=2000, seeds=[0, 1, 2]),
     "BO":   dict(fn=bayesian_optimization, evals=500, seeds=[0, 1]),
     "TPE":  dict(fn=tpe,                 evals=500,  seeds=[0, 1]),
     "SMAC": dict(fn=smac,                evals=500,  seeds=[0, 1]),
