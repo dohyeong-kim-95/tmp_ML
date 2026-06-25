@@ -1,0 +1,5 @@
+y,gbm_r2,strong_recall_lasso,strong_recall_perm,inter_recall,inter_detected
+y11,0.892,0.5,0.75,0.5,5
+y12,0.854,0.4,0.6,0.0,3
+y21,0.9,1.0,1.0,1.0,6
+y22,0.848,0.6666666666666666,1.0,0.5,12
