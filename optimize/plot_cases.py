@@ -34,7 +34,7 @@ def make_plots(data, out_eval="optimize/convergence_eval.png",
             ax.set_xlabel("evaluations" if mode == "eval" else "wall-clock time (s)")
             ax.set_ylabel("best J(X) = sum Y")
             ax.grid(alpha=0.3)
-            ax.legend(fontsize=7)
+            ax.legend(fontsize=16)   # 기존 7의 약 2.25배
         ttl = "EVAL budget" if mode == "eval" else f"TIME budget (T={T}s)"
         plt.suptitle(f"SA vs PSO(bin) vs GA vs BO vs TPE vs SMAC  -  {ttl}", fontsize=14)
         plt.tight_layout()
