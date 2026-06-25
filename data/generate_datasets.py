@@ -150,7 +150,7 @@ def summarize(d, df, gt, P):
     sumY = df[y_cols].sum(axis=1)
     n_terms = sum(len(s["strong"]) + len(s["weak"]) + len(s["interactions"])
                   for s in gt["responses"].values())
-    return {"db": f"db{d}", "n_strong/Y": P["n_strong"], "n_weak/Y": P["n_weak"],
+    return {"case": f"case{d}", "n_strong/Y": P["n_strong"], "n_weak/Y": P["n_weak"],
             "n_inter2/Y": P["n_inter2"], "n_quad/Y": P["n_quad"],
             "n_inter3/Y": P["n_inter3"], "noise_mult": round(P["noise_mult"], 2),
             "outlier%": round(P["outlier_frac"] * 100, 1),
@@ -161,12 +161,12 @@ if __name__ == "__main__":
     rows = []
     for d in [2, 3, 4, 5]:
         df, gt, P, ordl = make_dataset(d, seed=42 + d)
-        os.makedirs(f"data/db{d}", exist_ok=True)
-        df.to_csv(f"data/db{d}/dummy_data.csv", index=False)
-        json.dump(gt, open(f"data/db{d}/ground_truth.json", "w"),
+        os.makedirs(f"data/case{d}", exist_ok=True)
+        df.to_csv(f"data/case{d}/dummy_data.csv", index=False)
+        json.dump(gt, open(f"data/case{d}/ground_truth.json", "w"),
                   ensure_ascii=False, indent=2)
         rows.append(summarize(d, df, gt, P))
-        print(f"db{d}: saved  (ordinal levels {ordl})")
+        print(f"case{d}: saved  (ordinal levels {ordl})")
 
-    print("\n난이도 요약 (DB1=기존 data/dummy_data.csv 가 최저난이도):")
+    print("\n난이도 요약 (Case1=기존 data/dummy_data.csv 가 최저난이도):")
     print(pd.DataFrame(rows).to_string(index=False))
