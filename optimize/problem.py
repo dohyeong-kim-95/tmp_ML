@@ -61,7 +61,12 @@ class Problem:
         for v, c in s["weak"].items():
             val += c * self._scaled(x, v)
         for it in s["interactions"]:
-            val += it["coef"] * self._scaled(x, it["a"]) * self._scaled(x, it["b"])
+            # 스키마 호환: DB1은 {a,b}, DB2~5는 {vars:[...]} (2·3차·quadratic)
+            vs = it["vars"] if "vars" in it else [it["a"], it["b"]]
+            prod = 1.0
+            for v in vs:
+                prod *= self._scaled(x, v)
+            val += it["coef"] * prod
         for c in self.cat_cols:
             val += s["categorical"][c][x[c]]
         return val
