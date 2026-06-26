@@ -1,4 +1,4 @@
-"""prob1 iter 예산 sweep: 180/780/2400. score=gap%(3개 Case 평균: Case1/3/6)."""
+"""prob1 iter 예산 sweep: 180/780/2400. score=NMSE(Case별 Var정규화 후 3 Case 평균)."""
 import sys, numpy as np
 sys.path.insert(0, ".")
 import matplotlib; matplotlib.use("Agg")
@@ -19,10 +19,14 @@ from smac import smac
 CASES = {"Case1":"prob1/data/ground_truth.json","Case3":"prob1/data/case3/ground_truth.json",
          "Case6":"prob1/data/case6/ground_truth.json"}
 BUDGETS=[180,780,2400]; SEEDS=list(range(2))
-J={}
+J={}; VAR={}
 for c,p in CASES.items():
-    _,J[c]=Problem(gt_path=p).coordinate_ascent(np.random.default_rng(0),restarts=50)
+    pr=Problem(gt_path=p)
+    _,J[c]=pr.coordinate_ascent(np.random.default_rng(0),restarts=50)
+    rng=np.random.default_rng(7)
+    VAR[c]=float(np.var([pr.objective(pr.random_solution(rng)) for _ in range(3000)]))
 print("prob1 J*:",{c:round(v,1) for c,v in J.items()})
+print("prob1 Var:",{c:round(v,1) for c,v in VAR.items()})
 def rs(p,s,cap): return random_search(p,s)
 ALGOS={"Random":rs,
  "SA":lambda p,s,c:simulated_annealing(p,max_eval=c,seed=s),
@@ -38,15 +42,18 @@ ALGOS={"Random":rs,
 data={n:[] for n in ALGOS}
 for n,fn in ALGOS.items():
     for B in BUDGETS:
-        gaps=[(J[c]-run_cap(Problem(gt_path=p),fn,s,B))/abs(J[c])*100
-              for c,p in CASES.items() for s in SEEDS]
-        data[n].append(float(np.mean(gaps)))
-    print(f"  {n:8} "+" ".join(f"B={B}:{data[n][i]:6.2f}%" for i,B in enumerate(BUDGETS)))
+        # Case별 NMSE = mean_seeds[(J*-bt)^2]/Var_case, 그 평균
+        per=[]
+        for c,p in CASES.items():
+            se=[(J[c]-run_cap(Problem(gt_path=p),fn,s,B))**2 for s in SEEDS]
+            per.append(np.mean(se)/VAR[c])
+        data[n].append(float(np.mean(per)))
+    print(f"  {n:8} "+" ".join(f"B={B}:{data[n][i]:8.4f}" for i,B in enumerate(BUDGETS)))
 plt.figure(figsize=(9,5.5))
-for n in ALGOS: plt.plot(BUDGETS,data[n],marker="o",label=n,lw=1.7)
+for n in ALGOS: plt.plot(BUDGETS,[max(x,1e-6) for x in data[n]],marker="o",label=n,lw=1.7)
 plt.xscale("log"); plt.yscale("log"); plt.xticks(BUDGETS,[str(b) for b in BUDGETS])
-plt.xlabel("iter(평가) budget"); plt.ylabel("gap to optimum (%, mean 3 cases)")
-plt.title("prob1 — iter budget sweep (lower=better)")
+plt.xlabel("iter (evaluation) budget"); plt.ylabel("normalized MSE (mean 3 cases)")
+plt.title("prob1 — iter budget sweep (NMSE, lower=better)")
 plt.grid(alpha=0.3,which="both"); plt.legend(fontsize=9,ncol=2)
 plt.tight_layout(); plt.savefig("prob1/itersweep.png",dpi=120)
 print("saved: prob1/itersweep.png")
