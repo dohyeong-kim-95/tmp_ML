@@ -31,11 +31,21 @@ def simulated_annealing(prob, max_eval=20000, T0=10.0, Tend=1e-3, seed=0,
     best_x, best_f = dict(x), fx
     history = [best_f]
 
-    # 기하 냉각: max_eval 스텝에 걸쳐 T0 -> Tend
+    # 진행도(progress) 기반 통합 냉각: T = T0 * (Tend/T0)^progress
+    #   - EVAL 예산: progress = step / max_eval
+    #   - TIME 예산: progress = 경과시간 / 시간예산   (max_eval에 안 묶임 → 공정)
+    ratio = Tend / T0
+    start = time.time()
+    total_t = (deadline - start) if deadline else None
     n_steps = max_eval - 1
-    alpha = (Tend / T0) ** (1.0 / n_steps)
-    T = T0
-    for _ in range(n_steps):
+    step = 0
+    while step < n_steps:
+        if deadline:
+            progress = min(1.0, (time.time() - start) / total_t) if total_t > 0 else 1.0
+        else:
+            progress = step / n_steps
+        T = T0 * (ratio ** progress)
+
         nx = neighbor(x, prob, rng)
         fn = prob.objective(nx)
         d = fn - fx  # 최대화
@@ -44,7 +54,7 @@ def simulated_annealing(prob, max_eval=20000, T0=10.0, Tend=1e-3, seed=0,
             if fx > best_f:
                 best_f, best_x = fx, dict(x)
         history.append(best_f)
-        T *= alpha
+        step += 1
         if deadline and time.time() > deadline:
             break
     return best_x, best_f, history
