@@ -24,8 +24,7 @@ from aco import aco
 
 warnings.filterwarnings("ignore")
 SEEDS = [0, 1, 2]
-EVAL_BUDGET = 2000
-TIME_SWEEP = [0.25, 0.5, 1.0, 2.0]
+TIME_SWEEP = [0.25, 0.5, 1.0, 2.0]   # 메인 목표 = TIME 예산 (EVAL sweep 미사용)
 MAIN_T = 1.0
 
 ALGOS = {"SA": simulated_annealing, "PSO": binary_pso, "GA": genetic_algorithm,
@@ -70,45 +69,30 @@ def gap_of(best_x):
     return (J_star - prob.true_objective(best_x)) / abs(J_star) * 100
 
 
-def run_algo(fn, mode, budget_or_T, seed):
+def run_time(fn, T, seed):
     prob.n_eval = 0
-    if mode == "eval":
-        x, f, h = fn(prob, max_eval=budget_or_T, seed=seed, deadline=None)
-    else:
-        x, f, h = fn(prob, max_eval=10_000_000, seed=seed,
-                     deadline=time.time() + budget_or_T)
-    return gap_of(x), prob.n_eval
+    x, f, h = fn(prob, max_eval=10_000_000, seed=seed, deadline=time.time() + T)
+    return gap_of(x)
 
 
-# ---------- EVAL 예산 ----------
-print(f"=== EVAL 예산({EVAL_BUDGET}) — gap%(진짜값 기준) ===")
+# ---------- TIME sweep (메인) ----------
 rows = []
-eval_gap = {}
-for name, fn in ALGOS.items():
-    gs = [run_algo(fn, "eval", EVAL_BUDGET, s)[0] for s in SEEDS]
-    eval_gap[name] = np.mean(gs)
-    rows.append({"mode": "eval", "budget": EVAL_BUDGET, "algo": name,
-                 "gap_mean": round(float(np.mean(gs)), 3),
-                 "gap_std": round(float(np.std(gs)), 3)})
-    print(f"  {name:6} gap={np.mean(gs):6.2f}%  (std {np.std(gs):.2f})")
-
-# ---------- TIME sweep ----------
-print(f"\n=== TIME sweep — gap%(진짜값 기준) ===")
+print(f"=== TIME sweep — gap%(진짜값 기준) ===")
 print(f"  {'algo':6} " + " ".join(f"T={t:>4}" for t in TIME_SWEEP))
 time_gap = {t: {} for t in TIME_SWEEP}
 for name, fn in ALGOS.items():
     line = []
     for T in TIME_SWEEP:
-        gs = [run_algo(fn, "time", T, s)[0] for s in SEEDS]
+        gs = [run_time(fn, T, s) for s in SEEDS]
         time_gap[T][name] = np.mean(gs)
-        rows.append({"mode": "time", "budget": T, "algo": name,
+        rows.append({"budget_s": T, "algo": name,
                      "gap_mean": round(float(np.mean(gs)), 3),
                      "gap_std": round(float(np.std(gs)), 3)})
         line.append(np.mean(gs))
     print(f"  {name:6} " + " ".join(f"{g:6.2f}" for g in line))
 
 with open("prob2/results.csv", "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=["mode", "budget", "algo", "gap_mean", "gap_std"])
+    w = csv.DictWriter(f, fieldnames=["budget_s", "algo", "gap_mean", "gap_std"])
     w.writeheader(); [w.writerow(r) for r in rows]
 
 # ---------- 그래프: TIME sweep 곡선 + 메인 T 막대 ----------
