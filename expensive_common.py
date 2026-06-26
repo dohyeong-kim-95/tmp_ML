@@ -63,6 +63,45 @@ def random_search(prob, seed):
         prob.objective(prob.random_solution(rng))   # BudgetExhausted 로 종료됨
 
 
+# ====================== iter(평가) 예산 sweep ======================
+def run_cap(prob, fn, seed, cap):
+    """정확히 cap회 평가하도록 강제(fn(prob,seed,cap)), best-true 반환."""
+    b = Budget(prob, cap)
+    prob.objective = b.objective
+    try:
+        fn(prob, seed, cap)
+    except BudgetExhausted:
+        pass
+    finally:
+        prob.objective = b._orig
+    return b.best_true
+
+
+def sweep(prob_provider, algos, metric, seeds, budgets, title, out_png,
+          ylabel="score (lower=better)"):
+    """algos: {name: fn(prob, seed, cap)}.  budgets별 score 곡선."""
+    data = {name: [] for name in algos}
+    for name, fn in algos.items():
+        line = []
+        for B in budgets:
+            sc = [metric(run_cap(prob_provider(s), fn, s, B)) for s in seeds]
+            data[name].append((float(np.mean(sc)), float(np.std(sc))))
+        print(f"  {name:8} " +
+              " ".join(f"B={B}:{data[name][i][0]:8.3f}" for i, B in enumerate(budgets)))
+    plt.figure(figsize=(9, 5.5))
+    for name in algos:
+        plt.plot(budgets, [max(v[0], 1e-6) for v in data[name]],
+                 marker="o", label=name, lw=1.7)
+    plt.xscale("log"); plt.yscale("log")
+    plt.xticks(budgets, [str(b) for b in budgets])
+    plt.xlabel("iter(평가) budget"); plt.ylabel(ylabel)
+    plt.title(f"{title}\niter budget sweep (lower=better)")
+    plt.grid(alpha=0.3, which="both"); plt.legend(fontsize=9, ncol=2)
+    plt.tight_layout(); plt.savefig(out_png, dpi=120)
+    print(f"saved: {out_png}")
+    return data
+
+
 def benchmark(prob_provider, algos, metric, seeds, title, out_png,
               ylabel="score (lower=better)"):
     """
