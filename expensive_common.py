@@ -94,7 +94,7 @@ def sweep(prob_provider, algos, metric, seeds, budgets, title, out_png,
                  marker="o", label=name, lw=1.7)
     plt.xscale("log"); plt.yscale("log")
     plt.xticks(budgets, [str(b) for b in budgets])
-    plt.xlabel("iter(평가) budget"); plt.ylabel(ylabel)
+    plt.xlabel("iter (evaluation) budget"); plt.ylabel(ylabel)
     plt.title(f"{title}\niter budget sweep (lower=better)")
     plt.grid(alpha=0.3, which="both"); plt.legend(fontsize=9, ncol=2)
     plt.tight_layout(); plt.savefig(out_png, dpi=120)
