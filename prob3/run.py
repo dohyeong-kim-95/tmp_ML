@@ -24,8 +24,8 @@ from aco import aco
 
 warnings.filterwarnings("ignore")
 SEEDS = [0, 1, 2]
-TIME_SWEEP = [0.25, 0.5, 1.0, 2.0]   # 메인 목표 = TIME 예산 (EVAL sweep 미사용)
-MAIN_T = 1.0
+TIME_SWEEP = [0.25, 0.5, 1.0, 2.0, 5.0]   # 메인 목표 = TIME 예산 (EVAL sweep 미사용)
+MAIN_T = 5.0
 
 ALGOS = {"SA": simulated_annealing, "PSO": binary_pso, "GA": genetic_algorithm,
          "MemGA": memetic_ga, "CHC": chc, "GOMEA": gomea, "ACO": aco}
@@ -79,46 +79,58 @@ def sq_err(best_x):
 def run_time(fn, T, seed):
     prob.n_eval = 0
     x, f, h = fn(prob, max_eval=10_000_000, seed=seed, deadline=time.time() + T)
-    return sq_err(x)
+    return sq_err(x), prob.n_eval          # (제곱오차, 평가수)
 
 
 # ---------- TIME sweep (메인) — score = normalized MSE ----------
 rows = []
-print(f"=== TIME sweep — NMSE (낮을수록 좋음) ===")
-print(f"  {'algo':6} " + " ".join(f"T={t:>5}" for t in TIME_SWEEP))
 time_nmse = {t: {} for t in TIME_SWEEP}
+time_iter = {t: {} for t in TIME_SWEEP}
 for name, fn in ALGOS.items():
-    line = []
     for T in TIME_SWEEP:
-        se = [run_time(fn, T, s) for s in SEEDS]      # seed별 제곱오차
+        res = [run_time(fn, T, s) for s in SEEDS]      # seed별 (제곱오차, 평가수)
+        se = [r[0] for r in res]; ne = [r[1] for r in res]
         nmse = float(np.mean(se)) / BASE_VAR
         time_nmse[T][name] = nmse
-        rows.append({"budget_s": T, "algo": name,
-                     "nmse": round(nmse, 5),
-                     "rmse_true": round(float(np.sqrt(np.mean(se))), 3)})
-        line.append(nmse)
-    print(f"  {name:6} " + " ".join(f"{g:7.4f}" for g in line))
+        time_iter[T][name] = int(np.mean(ne))
+        rows.append({"budget_s": T, "algo": name, "nmse": round(nmse, 5),
+                     "rmse_true": round(float(np.sqrt(np.mean(se))), 3),
+                     "n_eval": int(np.mean(ne))})
+
+print(f"=== TIME sweep — NMSE (낮을수록 좋음) ===")
+print(f"  {'algo':6} " + " ".join(f"T={t:>6}" for t in TIME_SWEEP))
+for name in ALGOS:
+    print(f"  {name:6} " + " ".join(f"{time_nmse[T][name]:8.4f}" for T in TIME_SWEEP))
+print(f"\n=== TIME sweep — iter(평가수) ===")
+print(f"  {'algo':6} " + " ".join(f"T={t:>7}" for t in TIME_SWEEP))
+for name in ALGOS:
+    print(f"  {name:6} " + " ".join(f"{time_iter[T][name]:9,d}" for T in TIME_SWEEP))
 
 with open("prob3/results.csv", "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=["budget_s", "algo", "nmse", "rmse_true"])
+    w = csv.DictWriter(f, fieldnames=["budget_s", "algo", "nmse", "rmse_true", "n_eval"])
     w.writeheader(); [w.writerow(r) for r in rows]
 
-# ---------- 그래프: TIME sweep 곡선 + 메인 T 막대 (score = NMSE) ----------
+# ---------- 그래프: TIME sweep 곡선 + 메인 T 막대 (score=NMSE, iter수 표기) ----------
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5.5))
 for name in ALGOS:
+    # 범례에 메인예산에서의 평가수(iter) 표기
+    label = f"{name} (n@{MAIN_T}s={time_iter[MAIN_T][name]:,})"
     ax1.plot(TIME_SWEEP, [max(time_nmse[T][name], 1e-6) for T in TIME_SWEEP],
-             marker="o", label=name, lw=1.8)
+             marker="o", label=label, lw=1.8)
 ax1.set_yscale("log")
 ax1.set_xlabel("time budget (s)"); ax1.set_ylabel("normalized MSE (log)")
 ax1.set_title("TIME budget sweep (noisy objective)"); ax1.grid(alpha=0.3, which="both")
-ax1.legend(fontsize=11)
+ax1.legend(fontsize=9)
 
 names = list(ALGOS)
 vals = [time_nmse[MAIN_T][n] for n in names]
 order = np.argsort(vals)
-ax2.bar([names[i] for i in order], [vals[i] for i in order], color="#1f77b4")
+bars = ax2.bar([names[i] for i in order], [vals[i] for i in order], color="#1f77b4")
+for i, b in zip(order, bars):                  # 막대 위에 iter수 표기
+    ax2.text(b.get_x() + b.get_width() / 2, b.get_height(),
+             f"{time_iter[MAIN_T][names[i]]:,}", ha="center", va="bottom", fontsize=8)
 ax2.set_ylabel("normalized MSE"); ax2.set_yscale("log")
-ax2.set_title(f"TIME budget = {MAIN_T}s  (lower = better)")
+ax2.set_title(f"TIME budget = {MAIN_T}s  (lower=better, label=iter수)")
 ax2.grid(axis="y", alpha=0.3, which="both")
 plt.suptitle(f"prob3 TRAP benchmark: {len(prob.vars)} cols, {len(Y)} Y, "
              f"deceptive blocks + noise (sd={prob.noise_sd}=4% main effect)",
