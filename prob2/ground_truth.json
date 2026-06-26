@@ -1,7 +1,9 @@
 {
   "meta": {
     "seed": 202,
-    "objective_noise_sd": 1.0,
+    "objective_noise_sd": 0.1755,
+    "noise_frac_of_main_effect": 0.04,
+    "main_effect_ref": 4.3886,
     "x_columns": {
       "binary": [
         "xb01",

@@ -15,7 +15,7 @@ import numpy as np
 SEED = 202
 CAT_LEVELS = ["A", "B", "C", "D"]
 N_BINARY, N_ORDINAL, N_CATEG = 40, 5, 5
-OBJECTIVE_NOISE_SD = 1.0          # 소폭 노이즈 (스텝 개선 ~3~6 대비 작음)
+NOISE_FRAC = 0.04                 # 목적함수 노이즈 = 주효과(평균 strong 계수)의 4%
 
 rng = np.random.default_rng(SEED)
 
@@ -72,7 +72,14 @@ def build_response(fam):
 
 spec = {y: build_response(y[1]) for y in Y_COLS}   # y[1] = family '1' or '2'
 
+# 주효과 크기 = 모든 Y의 |strong 계수| 평균. 노이즈는 그 NOISE_FRAC 배.
+strong_coefs = [abs(c) for s in spec.values() for c in s["strong"].values()]
+main_effect = float(np.mean(strong_coefs))
+OBJECTIVE_NOISE_SD = round(NOISE_FRAC * main_effect, 4)
+
 gt = {"meta": {"seed": SEED, "objective_noise_sd": OBJECTIVE_NOISE_SD,
+               "noise_frac_of_main_effect": NOISE_FRAC,
+               "main_effect_ref": round(main_effect, 4),
                "x_columns": {"binary": bin_cols,
                              "ordinal": {c: ord_levels[c] for c in ord_cols},
                              "categorical": {c: CAT_LEVELS for c in cat_cols}},
@@ -88,4 +95,6 @@ print(f"saved prob2/ground_truth.json")
 print(f"X: {len(all_x)}열 (binary {N_BINARY}/ordinal {N_ORDINAL}/categorical {N_CATEG})")
 print(f"ordinal levels: {ord_levels}")
 print(f"Y: {Y_COLS}")
-print(f"총 항수: {n_terms}, 목적함수 노이즈 sd: {OBJECTIVE_NOISE_SD}")
+print(f"총 항수: {n_terms}")
+print(f"주효과(평균 strong 계수) = {main_effect:.2f}")
+print(f"목적함수 노이즈 sd = {OBJECTIVE_NOISE_SD}  (= 주효과의 {NOISE_FRAC*100:.0f}%)")
