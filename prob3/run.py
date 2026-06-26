@@ -130,7 +130,7 @@ for i, b in zip(order, bars):                  # 막대 위에 iter수 표기
     ax2.text(b.get_x() + b.get_width() / 2, b.get_height(),
              f"{time_iter[MAIN_T][names[i]]:,}", ha="center", va="bottom", fontsize=8)
 ax2.set_ylabel("normalized MSE"); ax2.set_yscale("log")
-ax2.set_title(f"TIME budget = {MAIN_T}s  (lower=better, label=iter수)")
+ax2.set_title(f"TIME budget = {MAIN_T}s  (lower=better, label=iters)")
 ax2.grid(axis="y", alpha=0.3, which="both")
 plt.suptitle(f"prob3 TRAP benchmark: {len(prob.vars)} cols, {len(Y)} Y, "
              f"deceptive blocks + noise (sd={prob.noise_sd}=4% main effect)",
