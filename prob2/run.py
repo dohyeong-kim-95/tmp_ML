@@ -37,7 +37,14 @@ Y = prob.y_cols
 rng = np.random.default_rng(0)
 x_opt, J_star = prob.coordinate_ascent(rng, restarts=60)
 print(f"X {len(prob.vars)}열, Y {len(Y)}개, 목적함수 노이즈 sd={prob.noise_sd}")
-print(f"전역최적 J* (노이즈 제거) = {J_star:.3f}\n")
+print(f"전역최적 J* (노이즈 제거) = {J_star:.3f}")
+
+# 정규화 분모: 목적함수의 자연 분산(무작위 X에서의 진짜값 분산)
+rng = np.random.default_rng(7)
+samp = np.array([prob.true_objective(prob.random_solution(rng)) for _ in range(5000)])
+BASE_VAR = float(samp.var())
+print(f"정규화 분모 Var_random(true) = {BASE_VAR:.2f}")
+print("score = NMSE = mean_seeds[(J* - true(best_x))^2] / Var_random  (낮을수록 좋음)\n")
 
 # ---------- 구조적 난이도: 단일출발 좌표상승(진짜목적) ----------
 def single_start_true(rng):
@@ -65,52 +72,54 @@ print(f"[구조적 난이도] 단일출발 좌표상승 전역최적 도달률 =
 print("  (노이즈는 별도 난이도 — 최적화기는 노이즈 낀 값으로 의사결정)\n")
 
 
-def gap_of(best_x):
-    return (J_star - prob.true_objective(best_x)) / abs(J_star) * 100
+def sq_err(best_x):
+    return (J_star - prob.true_objective(best_x)) ** 2
 
 
 def run_time(fn, T, seed):
     prob.n_eval = 0
     x, f, h = fn(prob, max_eval=10_000_000, seed=seed, deadline=time.time() + T)
-    return gap_of(x)
+    return sq_err(x)
 
 
-# ---------- TIME sweep (메인) ----------
+# ---------- TIME sweep (메인) — score = normalized MSE ----------
 rows = []
-print(f"=== TIME sweep — gap%(진짜값 기준) ===")
-print(f"  {'algo':6} " + " ".join(f"T={t:>4}" for t in TIME_SWEEP))
-time_gap = {t: {} for t in TIME_SWEEP}
+print(f"=== TIME sweep — NMSE (낮을수록 좋음) ===")
+print(f"  {'algo':6} " + " ".join(f"T={t:>5}" for t in TIME_SWEEP))
+time_nmse = {t: {} for t in TIME_SWEEP}
 for name, fn in ALGOS.items():
     line = []
     for T in TIME_SWEEP:
-        gs = [run_time(fn, T, s) for s in SEEDS]
-        time_gap[T][name] = np.mean(gs)
+        se = [run_time(fn, T, s) for s in SEEDS]      # seed별 제곱오차
+        nmse = float(np.mean(se)) / BASE_VAR
+        time_nmse[T][name] = nmse
         rows.append({"budget_s": T, "algo": name,
-                     "gap_mean": round(float(np.mean(gs)), 3),
-                     "gap_std": round(float(np.std(gs)), 3)})
-        line.append(np.mean(gs))
-    print(f"  {name:6} " + " ".join(f"{g:6.2f}" for g in line))
+                     "nmse": round(nmse, 5),
+                     "rmse_true": round(float(np.sqrt(np.mean(se))), 3)})
+        line.append(nmse)
+    print(f"  {name:6} " + " ".join(f"{g:7.4f}" for g in line))
 
 with open("prob2/results.csv", "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=["budget_s", "algo", "gap_mean", "gap_std"])
+    w = csv.DictWriter(f, fieldnames=["budget_s", "algo", "nmse", "rmse_true"])
     w.writeheader(); [w.writerow(r) for r in rows]
 
-# ---------- 그래프: TIME sweep 곡선 + 메인 T 막대 ----------
+# ---------- 그래프: TIME sweep 곡선 + 메인 T 막대 (score = NMSE) ----------
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5.5))
 for name in ALGOS:
-    ax1.plot(TIME_SWEEP, [time_gap[T][name] for T in TIME_SWEEP],
+    ax1.plot(TIME_SWEEP, [max(time_nmse[T][name], 1e-6) for T in TIME_SWEEP],
              marker="o", label=name, lw=1.8)
-ax1.set_xlabel("time budget (s)"); ax1.set_ylabel("gap to true optimum (%)")
-ax1.set_title("TIME budget sweep (noisy objective)"); ax1.grid(alpha=0.3)
+ax1.set_yscale("log")
+ax1.set_xlabel("time budget (s)"); ax1.set_ylabel("normalized MSE (log)")
+ax1.set_title("TIME budget sweep (noisy objective)"); ax1.grid(alpha=0.3, which="both")
 ax1.legend(fontsize=11)
 
 names = list(ALGOS)
-vals = [time_gap[MAIN_T][n] for n in names]
+vals = [time_nmse[MAIN_T][n] for n in names]
 order = np.argsort(vals)
 ax2.bar([names[i] for i in order], [vals[i] for i in order], color="#1f77b4")
-ax2.set_ylabel("gap to true optimum (%)")
+ax2.set_ylabel("normalized MSE"); ax2.set_yscale("log")
 ax2.set_title(f"TIME budget = {MAIN_T}s  (lower = better)")
-ax2.grid(axis="y", alpha=0.3)
+ax2.grid(axis="y", alpha=0.3, which="both")
 plt.suptitle(f"prob2 model-free benchmark: {len(prob.vars)} cols, {len(Y)} Y, "
              f"noisy objective (sd={prob.noise_sd}, =4% of main effect)",
              fontsize=13)
