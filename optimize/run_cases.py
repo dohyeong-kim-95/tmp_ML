@@ -26,6 +26,9 @@ from bayesian_optimization import bayesian_optimization
 from tpe import tpe
 from smac import smac
 from aco import aco
+from memetic_ga import memetic_ga
+from chc import chc
+from gomea import gomea
 from complexity import case_complexity, complexity_index
 
 warnings.filterwarnings("ignore")
@@ -44,6 +47,9 @@ ALGOS = {
     "SA":   dict(fn=simulated_annealing, evals=2000, seeds=[0, 1, 2]),
     "PSO":  dict(fn=binary_pso,          evals=2000, seeds=[0, 1, 2]),
     "GA":   dict(fn=genetic_algorithm,   evals=2000, seeds=[0, 1, 2]),
+    "MemGA": dict(fn=memetic_ga,         evals=2000, seeds=[0, 1, 2]),
+    "CHC":  dict(fn=chc,                 evals=2000, seeds=[0, 1, 2]),
+    "GOMEA": dict(fn=gomea,              evals=2000, seeds=[0, 1, 2]),
     "ACO":  dict(fn=aco,                 evals=2000, seeds=[0, 1, 2]),
     "BO":   dict(fn=bayesian_optimization, evals=500, seeds=[0, 1]),
     "TPE":  dict(fn=tpe,                 evals=500,  seeds=[0, 1]),
