@@ -120,8 +120,8 @@ ax2.bar([names[i] for i in order], [vals[i] for i in order], color="#1f77b4")
 ax2.set_ylabel("normalized MSE"); ax2.set_yscale("log")
 ax2.set_title(f"TIME budget = {MAIN_T}s  (lower = better)")
 ax2.grid(axis="y", alpha=0.3, which="both")
-plt.suptitle(f"prob2 model-free benchmark: {len(prob.vars)} cols, {len(Y)} Y, "
-             f"noisy objective (sd={prob.noise_sd}, =4% of main effect)",
+plt.suptitle(f"prob3 TRAP benchmark: {len(prob.vars)} cols, {len(Y)} Y, "
+             f"deceptive blocks + noise (sd={prob.noise_sd}=4% main effect)",
              fontsize=13)
 plt.tight_layout()
 plt.savefig("prob3/benchmark.png", dpi=120)
