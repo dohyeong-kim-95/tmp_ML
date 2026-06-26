@@ -36,7 +36,7 @@ Y = prob.y_cols
 # ---------- 참조: 전역최적(노이즈 없는 진짜 목적) ----------
 rng = np.random.default_rng(0)
 x_opt, J_star = prob.coordinate_ascent(rng, restarts=60)
-print(f"X 50열, Y {len(Y)}개, 목적함수 노이즈 sd={prob.noise_sd}")
+print(f"X {len(prob.vars)}열, Y {len(Y)}개, 목적함수 노이즈 sd={prob.noise_sd}")
 print(f"전역최적 J* (노이즈 제거) = {J_star:.3f}\n")
 
 # ---------- 구조적 난이도: 단일출발 좌표상승(진짜목적) ----------
@@ -111,7 +111,8 @@ ax2.bar([names[i] for i in order], [vals[i] for i in order], color="#1f77b4")
 ax2.set_ylabel("gap to true optimum (%)")
 ax2.set_title(f"TIME budget = {MAIN_T}s  (lower = better)")
 ax2.grid(axis="y", alpha=0.3)
-plt.suptitle(f"prob2 model-free benchmark: 50 cols, 6 Y, noisy objective (sd={prob.noise_sd})",
+plt.suptitle(f"prob2 model-free benchmark: {len(prob.vars)} cols, {len(Y)} Y, "
+             f"noisy objective (sd={prob.noise_sd}, =4% of main effect)",
              fontsize=13)
 plt.tight_layout()
 plt.savefig("prob2/benchmark.png", dpi=120)
