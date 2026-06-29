@@ -15,7 +15,8 @@ import os
 
 from benchmark.scoring import ScoreSystem
 
-ALGO_ORDER = ["random", "sobol", "sa", "ga", "tpe", "smac", "botorch"]
+ALGO_ORDER = ["random", "sobol", "mlhs", "block_coord_local",
+              "sa", "ga", "tpe", "smac", "botorch"]
 BMS = ["BM1", "BM2", "BM3"]
 
 

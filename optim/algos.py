@@ -2,16 +2,21 @@
 
 각 어댑터: run(problem, budget, seed). 라이브러리는 lazy import(미설치 시 해당
 어댑터만 비활성).  포트폴리오:
-  random / sobol  : 정직한 하한선
-  sa              : 단일목적 이산공간 Simulated Annealing
-  ga              : pymoo 단일목적 정수 GA (model-free 대표)
-  tpe             : Optuna TPESampler (이산 강함, 경량)
-  smac            : SMAC3 RF-SMBO (혼합/이산 native, anchor)
-  botorch         : BoTorch GP-BO qLogEI (연속완화, GP 상한선 reference)
+  random / sobol      : 정직한 하한선
+  mlhs                : 혼합변수 marginal-balanced 초기설계 (Sobol floor 대안)
+  block_coord_local   : 블록-인지 좌표 local search (구조 활용 baseline)
+  sa                  : 단일목적 이산공간 Simulated Annealing
+  ga                  : pymoo 단일목적 정수 GA (model-free 대표)
+  tpe                 : Optuna TPESampler (이산 강함, 경량)
+  smac                : SMAC3 RF-SMBO (혼합/이산 native, anchor)
+  botorch             : BoTorch GP-BO qLogEI (연속완화, GP 상한선 reference)
 """
 from __future__ import annotations
 
 import numpy as np
+
+from benchmark.generator import COMMON, SET1, SET2
+from .design import marginal_balanced_design
 
 
 # --------------------------------------------------------------------------
@@ -33,6 +38,98 @@ def run_sobol(problem, budget, seed):
     X = np.minimum(X, L - 1)
     for i in range(budget):
         problem.evaluate(X[i])
+
+
+# --------------------------------------------------------------------------
+# 혼합변수 marginal-balanced 초기설계 (Sobol floor 매핑의 대안)
+# --------------------------------------------------------------------------
+def run_mlhs(problem, budget, seed):
+    """변수별 level marginal이 균등하도록 설계한 점들을 평가(비적응 baseline).
+
+    Sobol floor 매핑의 (categorical 가짜순서, cardinality별 coverage 불균형)을
+    피한다. prefix도 균등하므로 180/780 어느 체크포인트에서도 공정.
+    """
+    rng = np.random.default_rng(seed)
+    X = marginal_balanced_design(problem.levels, budget, rng)
+    for i in range(budget):
+        problem.evaluate(X[i])
+
+
+# --------------------------------------------------------------------------
+# 블록-인지 좌표 local search (구조 활용 baseline)
+# --------------------------------------------------------------------------
+def run_block_coord_local(problem, budget, seed,
+                          block_order=("common", "set2", "set1"), n_init=None):
+    """블록-인지 좌표 local search.
+
+    설계:
+      - 초기점: marginal-balanced 설계의 관측 best 를 incumbent 로.
+      - 라운드마다 block_order(기본 common→set2→set1)로 각 변수를 1-hop 스윕하며
+        변수별 best-improvement 채택. common 을 매 라운드 재방문해 블록 간 결합 흡수.
+      - 수렴(라운드 내 개선 없음) 시 marginal-balanced 새 점으로 random-restart →
+        남은 예산을 다른 basin 탐색에 사용(random-restart hill climbing).
+      - 노이즈 관측 점수로 탐색하고, 같은 X 재평가는 캐시로 회피(예산 절약).
+        참 점수 anytime 평가는 Problem 이 그대로 담당.
+
+    블록 순서 근거: set1 ⫫ set2 | common 이라 common 을 외부 좌표로 두고 매 라운드
+    재방문(=반복 block-coordinate)하면 사용자가 제안한 common→set2→common→set1
+    1-패스보다 결합을 더 안정적으로 흡수한다. set2(25차원, 어려움)를 set1 앞에 둬
+    예산을 먼저 투입한다.
+    """
+    rng = np.random.default_rng(seed)
+    L = problem.levels
+    blocks = {"common": list(COMMON), "set1": list(SET1), "set2": list(SET2)}
+
+    cache = {}
+
+    def ev(x):
+        t = tuple(int(v) for v in x)
+        if t in cache:
+            return cache[t]
+        if problem.n >= budget:
+            return -np.inf
+        s = problem.evaluate(x)
+        cache[t] = s
+        return s
+
+    n_init = n_init or max(problem.dim, min(2 * problem.dim, budget // 5))
+    init = marginal_balanced_design(L, min(n_init, budget), rng)
+    x, cur = None, -np.inf
+    for i in range(init.shape[0]):
+        if problem.n >= budget:
+            break
+        s = ev(init[i])
+        if s > cur:
+            cur, x = s, init[i].copy()
+    if x is None:
+        x = init[0].copy()
+        cur = cache.get(tuple(int(v) for v in x), -np.inf)
+
+    while problem.n < budget:
+        progressed = False
+        for bname in block_order:
+            if problem.n >= budget:
+                break
+            for j in rng.permutation(blocks[bname]):
+                if problem.n >= budget:
+                    break
+                bv, bs = int(x[j]), cur
+                for v in range(int(L[j])):
+                    if v == x[j] or problem.n >= budget:
+                        continue
+                    cand = x.copy()
+                    cand[j] = v
+                    s = ev(cand)
+                    if s > bs:
+                        bs, bv = s, v
+                if bv != x[j]:
+                    x[j], cur = bv, bs
+                    progressed = True
+        if problem.n >= budget:
+            break
+        if not progressed:                       # 수렴 → random-restart
+            nx = marginal_balanced_design(L, 1, rng)[0]
+            x, cur = nx.copy(), ev(nx)
 
 
 # --------------------------------------------------------------------------
@@ -232,6 +329,8 @@ def run_botorch(problem, budget, seed, n_init=None, refit_every=15, max_train=25
 REGISTRY = {
     "random": run_random,
     "sobol": run_sobol,
+    "mlhs": run_mlhs,
+    "block_coord_local": run_block_coord_local,
     "sa": run_sa,
     "ga": run_ga,
     "tpe": run_tpe,
