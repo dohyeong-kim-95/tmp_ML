@@ -2,9 +2,9 @@
 
 산출물(benchmark/artifacts/<BM>.json):
   - config, cardinality, 블록 분할
-  - 목적별 정규화 범위(goodness lo/hi)
-  - 3종 scalarization 의 참조 최적 효용/해
-  - 난이도 점검: 랜덤서치가 예산 내 닫는 gap
+  - 목적별 정규화 범위(raw-y lo/hi)
+  - 3종 점수(sum/chebyshev/owa)의 참조 최적/해
+  - 난이도 점검: 랜덤서치 / 예산제한 local-search 의 gap-closure
 
 실행: python -m benchmark.build
 """
@@ -25,7 +25,7 @@ BUDGETS = (180, 780, 2400)
 def random_search_best_utility(bm, kind, budget, seed):
     rng = np.random.default_rng(seed)
     X = bm.random_X(rng, budget)
-    return float(bm.utility(X, kind).max())
+    return float(bm.score(X, kind).max())
 
 
 def local_search_best_utility(bm, kind, budget, seed):
@@ -40,7 +40,7 @@ def local_search_best_utility(bm, kind, budget, seed):
     while used < budget:
         x = bm.random_X(rng, 1)[0]
         used += 1
-        v = float(bm.utility(x[None, :], kind)[0])
+        v = float(bm.score(x[None, :], kind)[0])
         best = max(best, v)
         improved = True
         while improved and used < budget:
@@ -51,7 +51,7 @@ def local_search_best_utility(bm, kind, budget, seed):
                     continue
                 cand = np.tile(x, (L, 1))
                 cand[:, j] = np.arange(L)
-                vals = bm.utility(cand, kind)
+                vals = bm.score(cand, kind)
                 used += L
                 bi = int(np.argmax(vals))
                 if vals[bi] > v + 1e-12:
@@ -78,8 +78,8 @@ def build_one(cfg):
             "space_size_log10": float(np.log10(bm.levels.astype(float)).sum()),
         },
         "noise_scale": [float(x) for x in bm.noise_scale],
-        "norm_lo": [float(x) for x in bm._lo],
-        "norm_hi": [float(x) for x in bm._hi],
+        "y_lo": [float(x) for x in bm._y_lo],
+        "y_hi": [float(x) for x in bm._y_hi],
         "reference_optimum": {},
         "difficulty_random_search": {},
         "difficulty_local_search": {},
@@ -115,8 +115,8 @@ def main():
             json.dump(rec, f, ensure_ascii=False, indent=2)
 
         # 난이도 변별: 예산제한 local-search 의 gap-closure(참조최적 대비)
-        ls = rec["difficulty_local_search"]["equal"]
-        ref_eq = rec["reference_optimum"]["equal"]["utility"]
+        ls = rec["difficulty_local_search"]["sum"]
+        ref_eq = rec["reference_optimum"]["sum"]["utility"]
         closure = {b: ls[str(b)]["ls_best_mean"] / ref_eq for b in BUDGETS}
         summary.append((name, rec["layout"]["space_size_log10"],
                         closure[180], closure[2400], ref_eq))
@@ -132,7 +132,7 @@ def main():
                   f"LS180={l['180']['ls_best_mean']:.3f} "
                   f"LS2400={l['2400']['ls_best_mean']:.3f}")
 
-    print("\n=== 난이도 ladder (equal): local-search gap-closure = LS_best/ref_opt ===")
+    print("\n=== 난이도 ladder (sum): local-search gap-closure = LS_best/ref_opt ===")
     print(f"{'BM':4s} {'space':8s} {'closure@180':12s} {'closure@2400':12s} {'ref_opt':8s}")
     for name, sp, c180, c2400, ref in summary:
         print(f"{name:4s} 10^{sp:5.2f} {c180:11.2%} {c2400:11.2%} {ref:8.3f}")

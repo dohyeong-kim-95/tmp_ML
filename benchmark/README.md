@@ -29,10 +29,20 @@ y_m = g_m + ε,  ε~N(0, (0.05·spread)²)
 - 충돌: 공통블록 base shape를 `conflict_rho`로 공유 → max/min 좋은방향 상충
 - 정규화: 목적별 goodness(최소화는 부호반전)를 [0,1], 1=best
 
-## 효용(scalarization) 3종
-- `equal` — 정규화 동일가중 평균
+## 점수(scalarization) 3종 — `scoring.py` (독립 모듈)
+벤치마크/실문제 공용. min-max 정규화(1=best) 후:
+- `sum` — 정규화 후 단순합 (균형 baseline)
 - `chebyshev` — augmented Chebyshev(최악 성분 보호, ρ=0.01)
-- `owa` — k-bottom OWA(하위 k=2 평균)
+- `owa` — bottom-k OWA(하위 k=2 평균)
+
+```python
+from benchmark.scoring import MinMaxNormalizer, ScoreSystem, ScoreConfig
+# 벤치마크: 알려진 정답 범위 사용 (bm.scorer 로 이미 구성됨)
+# 실문제: 관측 표본으로 적응 정규화
+ss = ScoreSystem(MinMaxNormalizer.from_samples(Y_obs, maximize_mask), ScoreConfig(owa_k=2))
+ss.all_scores(Y)        # {'sum':..., 'chebyshev':..., 'owa':...}
+```
+`generator` 는 이 모듈을 위임 사용한다(점수 로직 단일 출처).
 
 ## 난이도 ladder
 | | n_harmonics | interaction(density/strength) | 3-way | conflict_rho | noise_frac |

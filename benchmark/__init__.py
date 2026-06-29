@@ -9,6 +9,14 @@ from .generator import (
     SET1,
     SET2,
 )
+from .scoring import (
+    MinMaxNormalizer,
+    ScoreConfig,
+    ScoreSystem,
+    score_sum,
+    score_chebyshev,
+    score_owa,
+)
 from . import configs
 
 __all__ = [
@@ -20,5 +28,11 @@ __all__ = [
     "COMMON",
     "SET1",
     "SET2",
+    "MinMaxNormalizer",
+    "ScoreConfig",
+    "ScoreSystem",
+    "score_sum",
+    "score_chebyshev",
+    "score_owa",
     "configs",
 ]

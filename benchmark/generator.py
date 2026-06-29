@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import numpy as np
 
+from .scoring import MinMaxNormalizer, ScoreConfig, ScoreSystem
+
 # ----------------------------------------------------------------------------
 # 고정 레이아웃 (BM1/2/3 공통)
 # ----------------------------------------------------------------------------
@@ -101,6 +103,7 @@ class BlackBoxBenchmark:
         rng = np.random.default_rng(cfg.seed)
 
         self.affected = {m: COMMON + OBJ_OWN_BLOCK[m] for m in OBJECTIVES}
+        self.maximize_mask = np.array([m in MAXIMIZE for m in OBJECTIVES], dtype=bool)
 
         # 1) 공통블록 base shape (충돌 인코딩의 토대)
         base = {j: self._shape(rng, j) for j in COMMON}
@@ -142,8 +145,12 @@ class BlackBoxBenchmark:
                      self._shape(rng, k), self._shape(rng, l))
                 )
 
-        # 4) 정규화 범위(goodness 의 min/max)와 노이즈 스케일 산정
+        # 4) 정규화 범위(목적별 raw-y min/max)·노이즈 산정 + 점수체계 구성
         self._calibrate(rng)
+        self.scorer = ScoreSystem(
+            MinMaxNormalizer(self._y_lo, self._y_hi, self.maximize_mask),
+            ScoreConfig(cheby_rho=cfg.cheby_rho, owa_k=cfg.owa_k),
+        )
 
     # ---- shape / strong 선택 -------------------------------------------------
     def _shape(self, rng, j):
@@ -185,61 +192,36 @@ class BlackBoxBenchmark:
         y = y + rng.normal(scale=self.noise_scale, size=y.shape)
         return y
 
-    # ---- goodness / 정규화 / 효용 -------------------------------------------
-    def goodness(self, X):
-        """higher=better 로 통일 (최소화 목적은 부호 반전)."""
-        y = self.raw(X)
-        g = y.copy()
-        for mi, m in enumerate(OBJECTIVES):
-            if m in MINIMIZE:
-                g[:, mi] = -g[:, mi]
-        return g
+    # ---- 점수(정규화/3종 scalarization) — scoring 모듈에 위임 ----------------
+    SCALARIZATIONS = ScoreSystem.KINDS  # ("sum", "chebyshev", "owa")
 
     def z(self, X):
-        """목적별 goodness 를 [0,1] 정규화 (1=best)."""
-        g = self.goodness(X)
-        z = (g - self._lo) / np.maximum(self._hi - self._lo, 1e-12)
-        return np.clip(z, 0.0, 1.0)
+        """목적별 정규화 점수 [0,1], 1=best (scoring 모듈)."""
+        return self.scorer.z(self.raw(X))
 
-    def utility_equal(self, X):
-        return self.z(X).mean(axis=1)
+    def score(self, X, kind):
+        """raw(X) -> 단일 점수 (kind ∈ {'sum','chebyshev','owa'})."""
+        return self.scorer.score(self.raw(X), kind)
 
-    def utility_chebyshev(self, X):
-        z = self.z(X)
-        gap = 1.0 - z                       # ideal=1 까지의 거리
-        return -(gap.max(axis=1) + self.cfg.cheby_rho * gap.sum(axis=1))
-
-    def utility_owa(self, X):
-        z = np.sort(self.z(X), axis=1)      # 오름차순
-        return z[:, : self.cfg.owa_k].mean(axis=1)
-
-    SCALARIZATIONS = ("equal", "chebyshev", "owa")
-
-    def utility(self, X, kind):
-        return {
-            "equal": self.utility_equal,
-            "chebyshev": self.utility_chebyshev,
-            "owa": self.utility_owa,
-        }[kind](X)
+    def all_scores(self, X):
+        return self.scorer.all_scores(self.raw(X))
 
     # ---- 캘리브레이션 & 참조 최적 -------------------------------------------
     def _calibrate(self, rng):
-        # 각 목적 goodness 의 극값을 coordinate ascent + 랜덤표본으로 추정
+        """목적별 raw-y 의 도달 가능 min/max(정규화 범위)와 노이즈 스케일 산정."""
         n_obj = len(OBJECTIVES)
-        lo = np.full(n_obj, np.inf)
-        hi = np.full(n_obj, -np.inf)
         sample = self.random_X(rng, 20000)
-        g = self.goodness(sample)
-        lo = np.minimum(lo, g.min(axis=0))
-        hi = np.maximum(hi, g.max(axis=0))
+        ys = self.raw(sample)
+        y_lo = ys.min(axis=0)
+        y_hi = ys.max(axis=0)
         for mi in range(n_obj):
-            _, vmax = self._coord_opt(rng, lambda X, mi=mi: self.goodness(X)[:, mi], maximize=True)
-            _, vmin = self._coord_opt(rng, lambda X, mi=mi: self.goodness(X)[:, mi], maximize=False)
-            hi[mi] = max(hi[mi], vmax)
-            lo[mi] = min(lo[mi], vmin)
-        self._lo, self._hi = lo, hi
+            _, vmax = self._coord_opt(rng, lambda X, mi=mi: self.raw(X)[:, mi], maximize=True)
+            _, vmin = self._coord_opt(rng, lambda X, mi=mi: self.raw(X)[:, mi], maximize=False)
+            y_hi[mi] = max(y_hi[mi], vmax)
+            y_lo[mi] = min(y_lo[mi], vmin)
+        self._y_lo, self._y_hi = y_lo, y_hi
         # 노이즈: 원시 Y 스프레드(표준편차)의 noise_frac
-        self.noise_scale = self.cfg.noise_frac * self.raw(sample).std(axis=0)
+        self.noise_scale = self.cfg.noise_frac * ys.std(axis=0)
 
     def random_X(self, rng, n):
         X = np.empty((n, N_VARS), dtype=int)
@@ -269,7 +251,7 @@ class BlackBoxBenchmark:
         """주어진 scalarization 의 참조 최적해/효용 (대량 다중시작 좌표상승)."""
         rng = np.random.default_rng(seed)
         x, v = self._coord_opt(
-            rng, lambda X: self.utility(X, kind),
+            rng, lambda X: self.score(X, kind),
             maximize=True, n_restart=n_restart, n_sweep=n_sweep,
         )
         return x, float(v)
