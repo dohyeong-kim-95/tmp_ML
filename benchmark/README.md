@@ -35,13 +35,24 @@ y_m = g_m + ε,  ε~N(0, (0.05·spread)²)
 - `owa` — k-bottom OWA(하위 k=2 평균)
 
 ## 난이도 ladder
-| | n_harmonics | interaction | 3-way | conflict_rho |
-|---|---|---|---|---|
-| BM1 | 1 | 없음 | 0 | 0.20 |
-| BM2 | 3 | 0.12 / 0.5 | 0 | 0.55 |
-| BM3 | 5 | 0.30 / 0.9 | 6 | 0.85 |
+| | n_harmonics | interaction(density/strength) | 3-way | conflict_rho | noise_frac |
+|---|---|---|---|---|---|
+| BM1 | 1 | 없음 | 0 | 0.15 | 0.03 |
+| BM2 | 4 | 0.22 / 0.8 | 0 | 0.55 | 0.05 |
+| BM3 | 8 | 0.45 / 1.3 | 12 | 0.85 | 0.08 |
 
 X 구조/크기는 셋이 동일 공유 → 난이도는 위 knob으로만 조절(비교 공정성).
+
+**난이도 검증(예산제한 local-search gap-closure, equal, build.py):**
+| BM | closure@180 | closure@2400 |
+|---|---|---|
+| BM1 | 100% (완전히 풀림) | 100% |
+| BM2 | 89% | 96% |
+| BM3 | 82% | 95% |
+
+타이트한 예산(180)에서 100→89→82%로 단조 분리. BM3는 추가로 측정노이즈가
+가장 크므로(noiseless probe는 과소평가) 노이즈 포함 실제 최적화에서 최난도다.
+난이도 변별은 Phase 3에서 BO 등 실제 최적화기로 최종 검증한다.
 
 ## 사용
 ```python

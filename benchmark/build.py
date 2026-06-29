@@ -15,7 +15,7 @@ import os
 
 import numpy as np
 
-from .generator import BlackBoxBenchmark, OBJECTIVES, COMMON, SET1, SET2
+from .generator import BlackBoxBenchmark, OBJECTIVES, COMMON, SET1, SET2, N_VARS
 from . import configs
 
 ART_DIR = os.path.join(os.path.dirname(__file__), "artifacts")
@@ -26,6 +26,39 @@ def random_search_best_utility(bm, kind, budget, seed):
     rng = np.random.default_rng(seed)
     X = bm.random_X(rng, budget)
     return float(bm.utility(X, kind).max())
+
+
+def local_search_best_utility(bm, kind, budget, seed):
+    """예산 제한 random-restart 좌표 hill-climbing.
+
+    랜덤서치보다 변별력 높은 난이도 probe: 분리가능/단봉이면 거의 풀고(BM1),
+    교호작용/다봉이 강하면 좌표이동이 막혀 gap이 커진다(BM3).
+    (참조최적과 동일하게 노이즈 없는 효용으로 측정 → 탐색 난이도만 평가)
+    """
+    rng = np.random.default_rng(seed)
+    used, best = 0, -np.inf
+    while used < budget:
+        x = bm.random_X(rng, 1)[0]
+        used += 1
+        v = float(bm.utility(x[None, :], kind)[0])
+        best = max(best, v)
+        improved = True
+        while improved and used < budget:
+            improved = False
+            for j in rng.permutation(N_VARS):
+                L = int(bm.levels[j])
+                if used + L > budget:
+                    continue
+                cand = np.tile(x, (L, 1))
+                cand[:, j] = np.arange(L)
+                vals = bm.utility(cand, kind)
+                used += L
+                bi = int(np.argmax(vals))
+                if vals[bi] > v + 1e-12:
+                    x, v = cand[bi].copy(), float(vals[bi])
+                    improved = True
+            best = max(best, v)
+    return best
 
 
 def build_one(cfg):
@@ -49,6 +82,7 @@ def build_one(cfg):
         "norm_hi": [float(x) for x in bm._hi],
         "reference_optimum": {},
         "difficulty_random_search": {},
+        "difficulty_local_search": {},
     }
     for kind in BlackBoxBenchmark.SCALARIZATIONS:
         x_star, u_star = bm.reference_optimum(kind, seed=100)
@@ -56,13 +90,17 @@ def build_one(cfg):
             "utility": u_star,
             "x": [int(v) for v in x_star],
         }
-        # 난이도 점검: 랜덤서치 best 가 참조최적 대비 닫는 비율(여러 seed 평균)
+        # 난이도 점검: 랜덤서치 / 예산제한 local-search 가 참조최적 대비 닫는 정도
         rec["difficulty_random_search"][kind] = {}
+        rec["difficulty_local_search"][kind] = {}
         for b in BUDGETS:
-            vals = [random_search_best_utility(bm, kind, b, s) for s in range(5)]
+            rs = [random_search_best_utility(bm, kind, b, s) for s in range(5)]
+            ls = [local_search_best_utility(bm, kind, b, s) for s in range(5)]
             rec["difficulty_random_search"][kind][str(b)] = {
-                "rs_best_mean": float(np.mean(vals)),
-                "ref_optimum": u_star,
+                "rs_best_mean": float(np.mean(rs)), "ref_optimum": u_star,
+            }
+            rec["difficulty_local_search"][kind][str(b)] = {
+                "ls_best_mean": float(np.mean(ls)), "ref_optimum": u_star,
             }
     return bm, rec
 
@@ -76,26 +114,28 @@ def main():
         with open(path, "w") as f:
             json.dump(rec, f, ensure_ascii=False, indent=2)
 
-        # equal 기준 난이도 한눈에
-        rs = rec["difficulty_random_search"]["equal"]["180"]
+        # 난이도 변별: 예산제한 local-search 의 gap-closure(참조최적 대비)
+        ls = rec["difficulty_local_search"]["equal"]
+        ref_eq = rec["reference_optimum"]["equal"]["utility"]
+        closure = {b: ls[str(b)]["ls_best_mean"] / ref_eq for b in BUDGETS}
         summary.append((name, rec["layout"]["space_size_log10"],
-                        rs["rs_best_mean"], rs["ref_optimum"]))
+                        closure[180], closure[2400], ref_eq))
         print(f"[{name}] saved -> {path}")
         print(f"    space 10^{rec['layout']['space_size_log10']:.2f}, "
               f"noise_scale~{np.mean(rec['noise_scale']):.3f}")
         for kind in BlackBoxBenchmark.SCALARIZATIONS:
-            d = rec["difficulty_random_search"][kind]
+            r = rec["difficulty_random_search"][kind]
+            l = rec["difficulty_local_search"][kind]
             ref = rec["reference_optimum"][kind]["utility"]
-            gaps = {b: ref - d[str(b)]["rs_best_mean"] for b in BUDGETS}
             print(f"    [{kind:9s}] ref_opt={ref:.3f}  "
-                  f"RS180={d['180']['rs_best_mean']:.3f} "
-                  f"RS2400={d['2400']['rs_best_mean']:.3f}  "
-                  f"gap180={gaps[180]:.3f}")
+                  f"RS180={r['180']['rs_best_mean']:.3f}  "
+                  f"LS180={l['180']['ls_best_mean']:.3f} "
+                  f"LS2400={l['2400']['ls_best_mean']:.3f}")
 
-    print("\n=== 난이도 ladder 점검 (equal, budget=180) ===")
-    print(f"{'BM':4s} {'space':8s} {'RS_best':8s} {'ref_opt':8s} {'gap':8s}")
-    for name, sp, rs, ref in summary:
-        print(f"{name:4s} 10^{sp:5.2f} {rs:8.3f} {ref:8.3f} {ref-rs:8.3f}")
+    print("\n=== 난이도 ladder (equal): local-search gap-closure = LS_best/ref_opt ===")
+    print(f"{'BM':4s} {'space':8s} {'closure@180':12s} {'closure@2400':12s} {'ref_opt':8s}")
+    for name, sp, c180, c2400, ref in summary:
+        print(f"{name:4s} 10^{sp:5.2f} {c180:11.2%} {c2400:11.2%} {ref:8.3f}")
 
 
 if __name__ == "__main__":
