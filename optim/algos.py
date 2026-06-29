@@ -167,6 +167,7 @@ def run_botorch(problem, budget, seed, n_init=None, refit_every=15, max_train=25
     from botorch.optim import optimize_acqf
     from scipy.stats import qmc
 
+    torch.set_num_threads(1)        # 코어 독식 방지(다른 잡과 공존)
     torch.manual_seed(seed)
     dtype = torch.double
     dim = problem.dim

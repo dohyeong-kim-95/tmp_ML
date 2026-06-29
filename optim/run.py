@@ -52,8 +52,12 @@ def main():
     ap.add_argument("--max-budget", type=int, default=780)
     ap.add_argument("--budgets", default="180,780")
     ap.add_argument("--seeds", type=int, default=3)
+    ap.add_argument("--seed-list", default=None,
+                    help="명시적 seed 인덱스(csv). 설정 시 --seeds 무시")
     ap.add_argument("--out", default=OUT_DEFAULT)
     ap.add_argument("--append", action="store_true")
+    ap.add_argument("--merge-extend", action="store_true",
+                    help="기존 셀의 seed 결과에 새 seed를 '추가'(덮어쓰지 않음)")
     args = ap.parse_args()
 
     algos = args.algos.split(",")
@@ -61,9 +65,11 @@ def main():
     kinds = args.kinds.split(",")
     budgets = [int(b) for b in args.budgets.split(",")]
     checkpoints = [b for b in budgets if b <= args.max_budget]
+    seed_indices = ([int(x) for x in args.seed_list.split(",")]
+                    if args.seed_list else list(range(args.seeds)))
 
     res = {"meta": {}, "floor": {}, "ref_opt": {}, "runs": {}}
-    if args.append and os.path.exists(args.out):
+    if (args.append or args.merge_extend) and os.path.exists(args.out):
         with open(args.out) as f:
             res = json.load(f)
     res["meta"] = {"budgets": budgets, "max_budget": args.max_budget,
@@ -88,15 +94,18 @@ def main():
             bm = bm_cache[name]
             res["runs"][algo].setdefault(name, {})
             for kind in kinds:
-                cells = {str(b): [] for b in checkpoints}
+                # merge-extend: 기존 seed 결과를 보존하고 새 seed를 이어붙임
+                prev = res["runs"][algo][name].get(kind) if args.merge_extend else None
+                cells = ({str(b): list(prev["best_true"][str(b)]) for b in checkpoints}
+                         if prev else {str(b): [] for b in checkpoints})
                 t0 = time.time()
-                for s in range(args.seeds):
+                for s in seed_indices:
                     prob = Problem(bm, kind, seed=1000 * s + 7)
                     run_fn(prob, args.max_budget, seed=s)
                     cp = prob.checkpoints(checkpoints)
                     for b in checkpoints:
                         cells[str(b)].append(cp[b])
-                dt = time.time() - t0
+                dt = time.time() - t0 + (prev["sec"] if prev else 0.0)
                 floor = res["floor"][name][kind]
                 ref = res["ref_opt"][name][kind]
                 denom = max(ref - floor, 1e-9)
