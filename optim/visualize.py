@@ -70,6 +70,49 @@ def plot_budget(res, budget, path):
     return path
 
 
+def plot_by_kind(res, budget, path):
+    """전치 레이아웃: 서브플롯=algo, x축=kind, legend=BM."""
+    import math
+    algos = [a for a in ALGO_ORDER if a in res["runs"]]
+    kinds = list(ScoreSystem.KINDS)
+    ncol = 3
+    nrow = math.ceil(len(algos) / ncol)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4 * ncol, 3.2 * nrow), squeeze=False)
+    x = np.arange(len(kinds))
+    w = 0.25
+    for idx, a in enumerate(algos):
+        ax = axes[idx // ncol][idx % ncol]
+        for bi, bm in enumerate(BMS):
+            vals = []
+            for kind in kinds:
+                c = _cell(res, a, bm, kind)
+                fl = res["floor"][bm][kind]; rf = res["ref_opt"][bm][kind]
+                den = max(rf - fl, 1e-9)
+                if c is None or str(budget) not in c["best_true"]:
+                    vals.append(np.nan)
+                else:
+                    arr = np.array(c["best_true"][str(budget)])
+                    vals.append(float(((arr - fl) / den).mean()))
+            ax.bar(x + (bi - 1) * w, vals, w, color=BM_COLORS[bm], label=bm)
+        ax.set_title(a)
+        ax.set_xticks(x); ax.set_xticklabels(kinds)
+        ax.set_ylim(0, 1.15); ax.axhline(1.0, ls="--", c="gray", lw=0.8)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+        ax.grid(axis="y", alpha=0.25)
+        ax.set_ylabel("closure")
+        if idx == 0:
+            ax.legend(fontsize=8, ncol=3, loc="upper right")
+    for j in range(len(algos), nrow * ncol):
+        axes[j // ncol][j % ncol].axis("off")
+    fig.suptitle(f"closure by kind  @ budget={budget}  "
+                 f"(subplot=algo, xtick=kind, legend=BM)", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
+
+
 def main():
     files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), "results*.json")))
     res = merge(files)
@@ -77,6 +120,7 @@ def main():
     out = []
     for b in budgets:
         out.append(plot_budget(res, b, os.path.join(FIG_DIR, f"closure_{b}.png")))
+        out.append(plot_by_kind(res, b, os.path.join(FIG_DIR, f"by_kind_{b}.png")))
     print("merged:", [os.path.basename(f) for f in files])
     for p in out:
         print("saved ->", p)
