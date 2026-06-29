@@ -337,3 +337,10 @@ REGISTRY = {
     "smac": run_smac,
     "botorch": run_botorch,
 }
+
+# 공정 비교용: 각 base 에 동일한 블록-분해 구조를 주입한 '*_blk' 버전.
+# (block_coord_local 은 사실상 block_decomp(coordinate-descent) 에 해당)
+from .blockwrap import make_block_decomp  # noqa: E402
+
+for _base in ("random", "sobol", "mlhs", "sa", "ga", "tpe", "smac", "botorch"):
+    REGISTRY[f"{_base}_blk"] = make_block_decomp(REGISTRY[_base])
