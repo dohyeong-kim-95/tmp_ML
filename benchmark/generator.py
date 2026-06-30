@@ -247,11 +247,60 @@ class BlackBoxBenchmark:
                 best_v, best_x = v, x.copy()
         return best_x, best_v
 
-    def reference_optimum(self, kind, seed=0, n_restart=40, n_sweep=5):
-        """주어진 scalarization 의 참조 최적해/효용 (대량 다중시작 좌표상승)."""
+    def _ga_opt(self, kind, n_eval=200000, pop=200, seed=0):
+        """전역 reference용 GA(노이즈 없는 효용 최대화).
+
+        좌표상승은 교호작용이 강하면 참 최적에 못 닿는다(좌표 편향). 비분리/기만적
+        함수에서 더 높은 참 최적을 찾기 위해 대예산 GA로 천장을 올린다.
+        → reference가 '780 budget이 닿을 수 없는' 진짜 최적에 가깝도록.
+        """
+        from pymoo.core.problem import Problem as PymooProblem
+        from pymoo.algorithms.soo.nonconvex.ga import GA
+        from pymoo.operators.sampling.rnd import IntegerRandomSampling
+        from pymoo.operators.crossover.sbx import SBX
+        from pymoo.operators.mutation.pm import PM
+        from pymoo.operators.repair.rounding import RoundingRepair
+        from pymoo.termination.max_eval import MaximumFunctionCallTermination
+        from pymoo.optimize import minimize
+
+        L = self.levels
+
+        class _P(PymooProblem):
+            def __init__(s):
+                super().__init__(n_var=N_VARS, n_obj=1,
+                                 xl=np.zeros(N_VARS), xu=(L - 1).astype(float),
+                                 vtype=int)
+
+            def _evaluate(s, X, out, *a, **k):
+                Xi = np.clip(np.round(X).astype(int), 0, L - 1)
+                out["F"] = (-self.score(Xi, kind)).reshape(-1, 1)
+
+        # eliminate_duplicates=False: 200k 예산에서 매 세대 O(pop^2) 중복검사가
+        # 병목이라 끈다(전역 reference 탐색엔 불필요).
+        algo = GA(pop_size=pop, sampling=IntegerRandomSampling(),
+                  crossover=SBX(prob=0.9, eta=15, repair=RoundingRepair()),
+                  mutation=PM(prob=0.9, eta=20, repair=RoundingRepair()),
+                  eliminate_duplicates=False)
+        res = minimize(_P(), algo, MaximumFunctionCallTermination(n_eval),
+                       seed=seed, verbose=False)
+        x = np.clip(np.round(res.X).astype(int), 0, L - 1)
+        return x, float(self.score(x[None, :], kind)[0])
+
+    def reference_optimum(self, kind, seed=0, n_restart=40, n_sweep=5,
+                          ga_n_eval=200000):
+        """scalarization 의 참조 최적해/효용.
+
+        앙상블: 다중시작 좌표상승 ∪ 대예산 GA(ga_n_eval) 중 더 높은 값.
+        좌표상승은 분리가능 칸(BM1)에서 정확하고, GA는 비분리/기만 칸(BM3/BM4)에서
+        좌표가 못 닿는 더 높은 최적을 찾는다 → 어느 칸에서도 천장이 후퇴하지 않음.
+        """
         rng = np.random.default_rng(seed)
-        x, v = self._coord_opt(
+        xc, vc = self._coord_opt(
             rng, lambda X: self.score(X, kind),
             maximize=True, n_restart=n_restart, n_sweep=n_sweep,
         )
-        return x, float(v)
+        if ga_n_eval and ga_n_eval > 0:
+            xg, vg = self._ga_opt(kind, n_eval=ga_n_eval, seed=seed)
+            if vg > vc:
+                return xg, float(vg)
+        return xc, float(vc)

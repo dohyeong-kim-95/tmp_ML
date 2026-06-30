@@ -18,10 +18,23 @@ import numpy as np
 from benchmark.scoring import ScoreSystem
 
 ALGO_ORDER = ["random", "sobol", "mlhs", "block_coord_local",
-              "sa", "ga", "tpe", "smac", "botorch",
+              "sa", "ga", "pso", "aco", "tpe", "smac", "botorch",
               "random_blk", "sobol_blk", "mlhs_blk", "sa_blk",
-              "ga_blk", "tpe_blk", "smac_blk", "botorch_blk"]
-BMS = ["BM1", "BM2", "BM3"]
+              "ga_blk", "pso_blk", "aco_blk", "tpe_blk", "smac_blk", "botorch_blk"]
+BMS = ["BM1", "BM2", "BM3", "BM4"]
+
+# 축소 풀(plot용): 각 항목 = (라벨, [후보 algo들]).
+#  - SF       = space-filling 중 best (random/sobol/mlhs)
+#  - 메타휴리스틱은 flat/blk 중 좋은 쪽만 (per-cell best)
+#  - block_coord_local 은 항상 포함(구조-활용 챔피언)
+POOL = [
+    ("SF", ["random", "sobol", "mlhs"]),
+    ("block_coord_local", ["block_coord_local"]),
+    ("SA", ["sa", "sa_blk"]),
+    ("GA", ["ga", "ga_blk"]),
+    ("PSO", ["pso", "pso_blk"]),
+    ("ACO", ["aco", "aco_blk"]),
+]
 
 
 def merge(files):
@@ -166,18 +179,116 @@ def render(res, budgets):
     return "\n".join(lines)
 
 
+def pool_pick(res, members, bm, kind, budget):
+    """후보 algo들 중 평균 closure가 가장 높은 것을 골라 그 통계 반환.
+
+    반환 (mean, std, worst, n, winner) 또는 None.  flat vs blk 중 '좋은 쪽만' /
+    SF의 'best of random/sobol/mlhs'를 per-cell로 구현."""
+    cands = []
+    for a in members:
+        s = stats(res, a, bm, kind, budget)
+        if s is not None:
+            cands.append((a, s))
+    if not cands:
+        return None
+    winner, (mean, std, worst, n) = max(cands, key=lambda t: t[1][0])
+    return mean, std, worst, n, winner
+
+
+def render_pool(res, budgets):
+    """축소 풀(6항목) robust 표 + 칸별 선택된 변형(winner) 표기."""
+    lines = []
+    for kind in ScoreSystem.KINDS:
+        cols = [(bm, b) for bm in BMS for b in budgets]
+        cols = [c for c in cols if any(pool_pick(res, m, c[0], kind, c[1])
+                                       for _, m in POOL)]
+        if not cols:
+            continue
+        head = f"### kind = {kind}  (mean±std · worst, [선택변형])\n"
+        head += "| pool | " + " | ".join(f"{bm}@{b}" for bm, b in cols) + " |\n"
+        head += "|" + "---|" * (len(cols) + 1) + "\n"
+        best_mean, best_worst = {}, {}
+        for c in cols:
+            picks = [(lbl, pool_pick(res, m, c[0], kind, c[1])) for lbl, m in POOL]
+            picks = [(lbl, p) for lbl, p in picks if p is not None]
+            if picks:
+                best_mean[c] = max(picks, key=lambda t: t[1][0])[0]
+                best_worst[c] = max(picks, key=lambda t: t[1][2])[0]
+        rows = ""
+        for lbl, members in POOL:
+            cells = []
+            for c in cols:
+                p = pool_pick(res, members, c[0], kind, c[1])
+                if p is None:
+                    cells.append("·"); continue
+                mean, std, worst, n, win = p
+                tag = "" if (len(members) == 1 or win == lbl.lower()) else f" [{win}]"
+                mark = ("★" if best_mean.get(c) == lbl else "") + \
+                       ("◆" if best_worst.get(c) == lbl else "")
+                cells.append((mark + f" {mean:.0%}±{std:.0%}·{worst:.0%}{tag}").strip())
+            rows += f"| {lbl} | " + " | ".join(cells) + " |\n"
+        lines.append(head + rows)
+    return "\n".join(lines)
+
+
+def render_pool_rank(res, budgets):
+    """축소 풀 종합 랭킹(전 BM×budget×kind 평균, mean·worst)."""
+    agg = {}
+    for lbl, members in POOL:
+        means, worsts = [], []
+        for kind in ScoreSystem.KINDS:
+            for bm in BMS:
+                for b in budgets:
+                    p = pool_pick(res, members, bm, kind, b)
+                    if p is not None:
+                        means.append(p[0]); worsts.append(p[2])
+        if means:
+            agg[lbl] = (float(np.mean(means)), float(np.mean(worsts)), len(means))
+    out = "### 축소 풀 종합 랭킹 (전 BM×budget×kind 평균)\n"
+    out += "| rank | pool | mean | worst | cells |\n|---|---|---|---|---|\n"
+    for i, (a, (m, w, n)) in enumerate(
+            sorted(agg.items(), key=lambda t: -t[1][0]), 1):
+        out += f"| {i} | {a} | {m:.1%} | {w:.1%} | {n} |\n"
+    return out
+
+
+def render_pool_by_budget(res, budgets):
+    """예산별 풀 랭킹 — 2400에서 순위 역전(crossover) 가시화."""
+    out = "### 예산별 풀 랭킹 (전 BM×kind 평균; budget별로 분리 → crossover 확인)\n"
+    for b in budgets:
+        agg = {}
+        for lbl, members in POOL:
+            ms = [pool_pick(res, members, bm, kind, b)
+                  for kind in ScoreSystem.KINDS for bm in BMS]
+            ms = [p[0] for p in ms if p is not None]
+            if ms:
+                agg[lbl] = float(np.mean(ms))
+        if not agg:
+            continue
+        rank = " > ".join(f"{a}({m:.0%})"
+                          for a, m in sorted(agg.items(), key=lambda t: -t[1]))
+        out += f"- **@{b}**: {rank}\n"
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--glob", default=os.path.join(os.path.dirname(__file__), "results*.json"))
     ap.add_argument("--md", default=None)
     ap.add_argument("--robust", action="store_true",
                     help="평균±표준편차·worst-case·종합랭킹(다중 seed 신뢰성) 출력")
+    ap.add_argument("--pool", action="store_true",
+                    help="축소 풀(SF/block_coord_local/SA/GA/PSO/ACO, blk중 best) 표")
     args = ap.parse_args()
 
     files = sorted(glob.glob(args.glob))
     res = merge(files)
     budgets = res["meta"].get("budgets", [180, 780])
-    if args.robust:
+    if args.pool:
+        table = (render_pool_rank(res, budgets) + "\n\n"
+                 + render_pool_by_budget(res, budgets) + "\n\n"
+                 + render_pool(res, budgets))
+    elif args.robust:
         table = render_rank(res, budgets) + "\n\n" + render_robust(res, budgets)
     else:
         table = render(res, budgets)
@@ -185,7 +296,13 @@ def main():
     print(table)
     if args.md:
         with open(args.md, "w") as f:
-            if args.robust:
+            if args.pool:
+                f.write("# 축소 풀 랭킹 — SF / block_coord_local / SA / GA / PSO / ACO\n\n")
+                f.write("메타휴리스틱은 flat/blk 중 **per-cell best**만, SF=random/sobol/mlhs 중 best. "
+                        "셀=`평균±표준편차·worst [선택변형]`. ★=칼럼 평균 1등, ◆=worst 1등. "
+                        "closure는 affine 변환이라 **칸 안 순위는 reference와 무관하게 유효**; "
+                        "BM4에서 비좌표 방법이 1위면 그게 'coordinate 한계'의 증거(closure>1 가능).\n\n")
+            elif args.robust:
                 f.write("# 알고리즘 랭킹 — 다중 seed 신뢰성\n\n")
                 f.write("closure(%) = (best_true − floor)/(ref_opt − floor). "
                         "셀=`평균±표준편차 · worst(최소 seed) (n=seed수)`. "

@@ -326,6 +326,91 @@ def run_botorch(problem, budget, seed, n_init=None, refit_every=15, max_train=25
         X_all.append(encode(xi))
 
 
+# --------------------------------------------------------------------------
+# Particle Swarm Optimization (연속완화 + 정수 반올림)
+# --------------------------------------------------------------------------
+def run_pso(problem, budget, seed, n_part=20, w=0.7, c1=1.5, c2=1.5):
+    """이산공간 PSO. 위치는 연속 [0,L-1], 평가 시 정수 반올림.
+
+    swarm 기반 전역탐색의 대표. ordinal엔 무난하지만 categorical엔 가짜순서를
+    강제(PSO의 알려진 약점) → ACO와의 대비점. budget = n_part × iterations.
+    """
+    rng = np.random.default_rng(seed)
+    L = problem.levels.astype(float)
+    span = np.maximum(L - 1, 1e-9)
+    dim = problem.dim
+
+    def ev(pos):
+        xi = np.clip(np.rint(pos), 0, problem.levels - 1).astype(int)
+        return problem.evaluate(xi)
+
+    n_part = min(n_part, max(2, budget))
+    X = rng.uniform(0, 1, size=(n_part, dim)) * span
+    V = rng.uniform(-1, 1, size=(n_part, dim)) * span * 0.1
+    pbest = X.copy()
+    pbest_s = np.full(n_part, -np.inf)
+    gbest, gbest_s = X[0].copy(), -np.inf
+    for i in range(n_part):
+        if problem.n >= budget:
+            break
+        s = ev(X[i])
+        pbest_s[i] = s
+        if s > gbest_s:
+            gbest_s, gbest = s, X[i].copy()
+    while problem.n < budget:
+        for i in range(n_part):
+            if problem.n >= budget:
+                break
+            r1, r2 = rng.random(dim), rng.random(dim)
+            V[i] = w * V[i] + c1 * r1 * (pbest[i] - X[i]) + c2 * r2 * (gbest - X[i])
+            X[i] = np.clip(X[i] + V[i], 0, span)
+            s = ev(X[i])
+            if s > pbest_s[i]:
+                pbest_s[i], pbest[i] = s, X[i].copy()
+            if s > gbest_s:
+                gbest_s, gbest = s, X[i].copy()
+
+
+# --------------------------------------------------------------------------
+# Ant Colony Optimization (이산 변수용 Ant System, 레벨별 페로몬)
+# --------------------------------------------------------------------------
+def run_aco(problem, budget, seed, n_ants=20, rho=0.1, top_k=3, alpha=1.0):
+    """범주형/이산 친화 ACO. 변수 j·레벨 v 마다 페로몬 tau[j][v].
+
+    각 개미는 변수별로 tau^alpha 에 비례해 레벨을 샘플(black-box라 heuristic η 없음).
+    rank-기반 deposit(상위 top_k 개미)로 점수 스케일/부호(cheby<0)에 무관.
+    categorical에 순서를 강제하지 않음 → PSO와 대비. budget = n_ants × iters.
+    """
+    rng = np.random.default_rng(seed)
+    Lv = [int(v) for v in problem.levels]
+    tau = [np.ones(L) for L in Lv]                      # 변수별 페로몬
+    n_ants = min(n_ants, max(2, budget))
+    while problem.n < budget:
+        sols, scores = [], []
+        for _ in range(n_ants):
+            if problem.n >= budget:
+                break
+            x = np.empty(problem.dim, dtype=int)
+            for j in range(problem.dim):
+                p = tau[j] ** alpha
+                p = p / p.sum()
+                x[j] = rng.choice(Lv[j], p=p)
+            sols.append(x)
+            scores.append(problem.evaluate(x))
+        if not sols:
+            break
+        for j in range(problem.dim):
+            tau[j] *= (1.0 - rho)                       # 증발
+        order = np.argsort(scores)[::-1][:top_k]        # 상위 개미만 deposit
+        for rank, idx in enumerate(order):
+            x = sols[idx]
+            amount = (top_k - rank) / top_k             # rank-기반(스케일 무관)
+            for j in range(problem.dim):
+                tau[j][x[j]] += amount
+        for j in range(problem.dim):
+            tau[j] = np.clip(tau[j], 1e-6, None)
+
+
 REGISTRY = {
     "random": run_random,
     "sobol": run_sobol,
@@ -333,6 +418,8 @@ REGISTRY = {
     "block_coord_local": run_block_coord_local,
     "sa": run_sa,
     "ga": run_ga,
+    "pso": run_pso,
+    "aco": run_aco,
     "tpe": run_tpe,
     "smac": run_smac,
     "botorch": run_botorch,
@@ -342,5 +429,5 @@ REGISTRY = {
 # (block_coord_local 은 사실상 block_decomp(coordinate-descent) 에 해당)
 from .blockwrap import make_block_decomp  # noqa: E402
 
-for _base in ("random", "sobol", "mlhs", "sa", "ga", "tpe", "smac", "botorch"):
+for _base in ("random", "sobol", "mlhs", "sa", "ga", "pso", "aco", "tpe", "smac", "botorch"):
     REGISTRY[f"{_base}_blk"] = make_block_decomp(REGISTRY[_base])

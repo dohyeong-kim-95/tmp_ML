@@ -17,10 +17,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from benchmark.scoring import ScoreSystem
-from .summarize import merge, ALGO_ORDER, BMS
+from .summarize import merge, ALGO_ORDER, BMS, POOL, pool_pick, per_seed_closures
 
 FIG_DIR = os.path.join(os.path.dirname(__file__), "figs")
-BM_COLORS = {"BM1": "#4C9F70", "BM2": "#E1A53F", "BM3": "#C0504D"}
+BM_COLORS = {"BM1": "#4C9F70", "BM2": "#E1A53F", "BM3": "#C0504D", "BM4": "#6A4C9C"}
 
 
 def _cell(res, algo, bm, kind):
@@ -203,6 +203,57 @@ def plot_vs_global(res, path, ref_algo="block_coord_local", ref_budget=20000):
     return path
 
 
+def plot_pool(res, budget, path):
+    """축소 풀(6항목) × BM 그룹막대. 메타휴리스틱은 flat/blk 중 best,
+    SF=space-filling 중 best. 오차막대=seed min~max. 막대 위에 선택변형 표기.
+
+    BM4(비분리)에서 block_coord_local이 1위를 잃는지(coordinate 한계)를 한눈에.
+    """
+    labels = [lbl for lbl, _ in POOL]
+    kinds = ScoreSystem.KINDS
+    bms = [b for b in BMS if any(
+        pool_pick(res, m, b, k, budget) for _, m in POOL for k in kinds)]
+    fig, axes = plt.subplots(len(kinds), 1,
+                             figsize=(max(8, 1.6 * len(labels)), 11))
+    fig.suptitle(f"축소 풀 closure @ budget={budget}   "
+                 "(메타휴리스틱=flat/blk중 best, SF=space-filling중 best)\n"
+                 "bar=seed mean, error=seed min~max, 막대위=선택변형", fontsize=12)
+    x = np.arange(len(labels)); w = 0.8 / max(len(bms), 1)
+    for ax, kind in zip(axes, kinds):
+        for bi, bm in enumerate(bms):
+            means, lo, hi, wins = [], [], [], []
+            for lbl, members in POOL:
+                p = pool_pick(res, members, bm, kind, budget)
+                if p is None:
+                    means.append(np.nan); lo.append(0); hi.append(0); wins.append("")
+                    continue
+                win = p[4]
+                arr = per_seed_closures(res, win, bm, kind, budget)
+                m = float(arr.mean())
+                means.append(m); lo.append(m - arr.min()); hi.append(arr.max() - m)
+                wins.append("blk" if win.endswith("_blk") else
+                            ("" if len(members) == 1 else "flat"))
+            off = (bi - (len(bms) - 1) / 2) * w
+            bars = ax.bar(x + off, means, w, yerr=[lo, hi], capsize=2,
+                          color=BM_COLORS[bm], label=bm, error_kw=dict(alpha=0.4))
+            for xi, (m, tag) in enumerate(zip(means, wins)):
+                if tag and np.isfinite(m):
+                    ax.text(x[xi] + off, m + 0.01, tag, ha="center", va="bottom",
+                            fontsize=6, rotation=90, color="#333")
+        ax.axhline(1.0, ls="--", c="gray", lw=0.8)
+        ax.set_title(f"kind = {kind}")
+        ax.set_xticks(x); ax.set_xticklabels(labels)
+        ax.set_ylabel("closure"); ax.set_ylim(0, 1.2)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+        ax.legend(loc="upper right", ncol=len(bms), fontsize=8)
+        ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
+
+
 def main():
     files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), "results*.json")))
     res = merge(files)
@@ -211,6 +262,7 @@ def main():
     for b in budgets:
         out.append(plot_budget(res, b, os.path.join(FIG_DIR, f"closure_{b}.png")))
         out.append(plot_by_kind(res, b, os.path.join(FIG_DIR, f"by_kind_{b}.png")))
+        out.append(plot_pool(res, b, os.path.join(FIG_DIR, f"pool_{b}.png")))
     # 공정 비교(블록 주입) — *_blk 결과가 있으면 생성
     if any(a.endswith("_blk") for a in res["runs"]):
         for kind in ("sum", "owa"):

@@ -49,4 +49,19 @@ BM3 = BMConfig(
     weak_ratio=0.35,            # weak 인자도 무시 못함 → 유효차원 ↑
 )
 
-ALL = {"BM1": BM1, "BM2": BM2, "BM3": BM3}
+BM4 = BMConfig(
+    name="BM4",                 # non-separable: 교호작용이 주효과와 대등/우세, 기만적
+    seed=4,
+    n_harmonics=10,             # 강한 다봉(좌표법이 빠질 국소최적 다수)
+    interaction_density=0.65,   # 영향 변수쌍의 65%에 교호 → 강한 비분리
+    interaction_strength=1.0,   # 교호 1항 ≈ strong 주효과 1개(둘 다 unit-shape 스케일)
+    n_three_way=40,             # 다수의 3차 교호 → 좌표 스윕으로 못 푸는 결합
+    conflict_rho=0.7,           # 뚜렷한 max/min 상충
+    noise_frac=0.06,
+    n_strong=4,
+    weak_ratio=0.5,             # effect sparsity 약화 → 주효과 단독 신호가 덜 지배적
+)
+
+# BM4는 ladder의 별도 가지(non-separable stress test): block_coord_local이
+# 1위를 유지하는지(=좌표 inductive bias의 한계)를 검증하기 위한 칸.
+ALL = {"BM1": BM1, "BM2": BM2, "BM3": BM3, "BM4": BM4}
