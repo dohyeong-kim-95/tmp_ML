@@ -155,6 +155,54 @@ def plot_block_lift(res, kind, budget, path):
     return path
 
 
+def plot_vs_global(res, path, ref_algo="block_coord_local", ref_budget=20000):
+    """global maxima(=ref_algo@ref_budget) 기준 bar graph.
+
+    빨간 점선 = ref_algo@ref_budget 가 찾은 반응표면 global maxima(seed별 max).
+    막대 = block_coord_local@180, @780 이 그 global max의 몇 %에 도달했는지
+    (closure_G = (best_true-floor)/(global_max-floor)).
+    """
+    runs = res["runs"]
+    if ref_algo not in runs:
+        return None
+    fig, axes = plt.subplots(1, len(BMS), figsize=(5 * len(BMS), 4.6))
+    kinds = list(ScoreSystem.KINDS)
+    x = np.arange(len(kinds)); w = 0.38
+    for ax, bm in zip(axes, BMS):
+        c180, c780, ok = [], [], []
+        for kind in kinds:
+            try:
+                bt = runs[ref_algo][bm][kind]["best_true"]
+                fl = res["floor"][bm][kind]
+                G = max(bt[str(ref_budget)])               # global max(=seed별 best)
+                den = max(G - fl, 1e-9)
+                c180.append((np.mean(bt["180"]) - fl) / den)
+                c780.append((np.mean(bt["780"]) - fl) / den)
+                ok.append(True)
+            except (KeyError, ValueError):
+                c180.append(np.nan); c780.append(np.nan); ok.append(False)
+        ax.bar(x - w / 2, c180, w, label="block_coord_local@180",
+               color="#9bbcc4", edgecolor="k", lw=0.4)
+        ax.bar(x + w / 2, c780, w, label="block_coord_local@780",
+               color="#4C9F70", edgecolor="k", lw=0.4)
+        ax.axhline(1.0, ls="--", c="#C0504D", lw=1.8,
+                   label=f"global max ({ref_algo}@{ref_budget})")
+        ax.set_title(f"{bm}")
+        ax.set_xticks(x); ax.set_xticklabels(kinds)
+        ax.set_ylim(0, 1.08)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+        ax.grid(axis="y", alpha=0.25)
+        if bm == BMS[0]:
+            ax.legend(fontsize=8, loc="lower right")
+    fig.suptitle(f"block_coord_local @180/@780 vs assumed global maxima "
+                 f"(= {ref_algo}@{ref_budget}, red dashed = 100%)", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
+
+
 def main():
     files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), "results*.json")))
     res = merge(files)
@@ -168,6 +216,14 @@ def main():
         for kind in ("sum", "owa"):
             out.append(plot_block_lift(res, kind, max(budgets),
                                        os.path.join(FIG_DIR, f"block_lift_{kind}.png")))
+    # global maxima(=block_coord_local@20000) 기준 그림 — 데이터 있으면
+    try:
+        if "20000" in res["runs"]["block_coord_local"]["BM1"]["sum"]["best_true"]:
+            p = plot_vs_global(res, os.path.join(FIG_DIR, "vs_global_max.png"))
+            if p:
+                out.append(p)
+    except KeyError:
+        pass
     print("merged:", [os.path.basename(f) for f in files])
     for p in out:
         print("saved ->", p)
