@@ -32,7 +32,7 @@ POOL = [
     ("block_coord_local", ["block_coord_local"]),
     ("SA", ["sa", "sa_blk"]),
     ("GA", ["ga", "ga_blk"]),
-    ("PSO", ["pso", "pso_blk"]),
+    ("PSO", ["pso", "pso_blk", "pso_mixed", "pso_mixed_blk"]),
     ("ACO", ["aco", "aco_blk"]),
     ("TPE", ["tpe", "tpe_blk"]),
 ]

@@ -136,24 +136,36 @@ def run_block_coord_local(problem, budget, seed,
 # Simulated Annealing (단일목적 이산공간)
 # --------------------------------------------------------------------------
 def run_sa(problem, budget, seed):
+    """이산공간 SA. (공정화)
+      - warm-up 점들의 best 를 시작 incumbent 로 사용(이전엔 첫 랜덤점에서 시작해
+        warm-up 정보를 T0 계산에만 썼다 → 낭비).
+      - 이동: ordinal 은 ±1 local step(순서 활용), categorical 은 random-reset
+        (TPE/SMAC 의 cat/ord 구분과 동등한 취급).
+    """
     rng = np.random.default_rng(seed)
     L = problem.levels
-    x = np.array([rng.integers(0, l) for l in L])
-    cur = problem.evaluate(x)
-    # 온도 스케일: 초기 무작위 점수 표준편차
-    warm = [problem.evaluate(np.array([rng.integers(0, l) for l in L]))
-            for _ in range(min(20, max(2, budget // 20)))]
-    T0 = max(np.std(warm), 1e-6)
-    used = 1 + len(warm)
-    for t in range(used, budget):
+    # warm-up: 무작위점 평가 → best 는 incumbent, 점수 분포는 T0
+    n_warm = min(20, max(2, budget // 20))
+    warm_x = [np.array([rng.integers(0, l) for l in L]) for _ in range(n_warm)]
+    warm_s = [problem.evaluate(wx) for wx in warm_x]
+    T0 = max(np.std(warm_s), 1e-6)
+    bi = int(np.argmax(warm_s))
+    x, cur = warm_x[bi].copy(), warm_s[bi]
+    for t in range(n_warm, budget):
         frac = t / budget
         T = T0 * (1.0 - frac) + 1e-6
         j = rng.integers(0, problem.dim)
         cand = x.copy()
         if L[j] > 1:
-            nv = rng.integers(0, L[j] - 1)
-            if nv >= x[j]:
-                nv += 1
+            if problem.is_cat[j]:                 # categorical: random reset
+                nv = rng.integers(0, L[j] - 1)
+                if nv >= x[j]:
+                    nv += 1
+            else:                                 # ordinal: ±1 local step
+                step = 1 if rng.random() < 0.5 else -1
+                nv = int(np.clip(x[j] + step, 0, L[j] - 1))
+                if nv == x[j]:
+                    nv = int(np.clip(x[j] - step, 0, L[j] - 1))
             cand[j] = nv
         s = problem.evaluate(cand)
         if s > cur or rng.random() < np.exp((s - cur) / T):
@@ -164,35 +176,37 @@ def run_sa(problem, budget, seed):
 # pymoo 단일목적 정수 GA
 # --------------------------------------------------------------------------
 def run_ga(problem, budget, seed):
-    from pymoo.core.problem import Problem as PymooProblem
-    from pymoo.algorithms.soo.nonconvex.ga import GA
-    from pymoo.operators.sampling.rnd import IntegerRandomSampling
-    from pymoo.operators.crossover.sbx import SBX
-    from pymoo.operators.mutation.pm import PM
-    from pymoo.operators.repair.rounding import RoundingRepair
+    """혼합변수 GA. (공정화)
+
+    이전엔 SBX(교배)+PM(돌연변이) — *순서·거리 가정* 연산자라 categorical 에 가짜
+    보간을 강제(불리). MixedVariableGA 로 교체: categorical(Choice)엔 이산 연산자
+    (uniform 교배 + random reset), ordinal(Integer)엔 정수 연산자 → 타입별 적정 처리
+    (TPE/SMAC 의 native cat/ord 구분과 동등).
+    """
+    from pymoo.core.problem import ElementwiseProblem
+    from pymoo.core.variable import Choice, Integer
+    from pymoo.core.mixed import MixedVariableGA
     from pymoo.termination.max_eval import MaximumFunctionCallTermination
     from pymoo.optimize import minimize
 
     L = problem.levels
+    dim = problem.dim
 
-    class _P(PymooProblem):
-        def __init__(self):
-            super().__init__(n_var=problem.dim, n_obj=1,
-                             xl=np.zeros(problem.dim), xu=(L - 1).astype(float),
-                             vtype=int)
+    class _P(ElementwiseProblem):
+        def __init__(s):
+            vars = {}
+            for j in range(dim):
+                if problem.is_cat[j]:
+                    vars[f"x{j}"] = Choice(options=list(range(int(L[j]))))
+                else:
+                    vars[f"x{j}"] = Integer(bounds=(0, int(L[j]) - 1))
+            super().__init__(vars=vars, n_obj=1)
 
-        def _evaluate(self, X, out, *a, **k):
-            Xi = np.clip(np.round(X).astype(int), 0, L - 1)
-            f = np.array([-problem.evaluate(Xi[i]) for i in range(Xi.shape[0])])
-            out["F"] = f.reshape(-1, 1)
+        def _evaluate(s, X, out, *a, **k):
+            x = np.array([X[f"x{j}"] for j in range(dim)], dtype=int)
+            out["F"] = -problem.evaluate(x)
 
-    algo = GA(
-        pop_size=20,
-        sampling=IntegerRandomSampling(),
-        crossover=SBX(prob=0.9, eta=15, repair=RoundingRepair()),
-        mutation=PM(prob=0.9, eta=20, repair=RoundingRepair()),
-        eliminate_duplicates=True,
-    )
+    algo = MixedVariableGA(pop_size=20)
     minimize(_P(), algo, MaximumFunctionCallTermination(budget),
              seed=seed, verbose=False)
 
@@ -411,6 +425,89 @@ def run_aco(problem, budget, seed, n_ants=20, rho=0.1, top_k=3, alpha=1.0):
             tau[j] = np.clip(tau[j], 1e-6, None)
 
 
+def run_pso_mixed(problem, budget, seed, n_part=20, w=0.7, c1=1.5, c2=1.5):
+    """혼합변수 PSO (공정화) — 변수 타입별 적정 업데이트.
+
+      - binary (L==2)         : sigmoid velocity (BPSO) → P(bit=1)=σ(v)
+      - ordinal (L>2, 순서O)  : 연속 velocity → round/clamp
+      - categorical (L>2)     : 레벨별 logit + velocity, softmax sampling (가짜순서 없음)
+
+    연속완화 단일 PSO(run_pso)가 categorical 에 강제하던 가짜순서를 제거 → GA 공정화와
+    동일 취지. pbest/gbest 는 디코딩된 정수해를 attractor 로 사용.
+    """
+    rng = np.random.default_rng(seed)
+    L = problem.levels.astype(int)
+    dim = problem.dim
+    typ = ["bin" if L[j] <= 2 else ("cat" if problem.is_cat[j] else "ord")
+           for j in range(dim)]
+    n_part = min(n_part, max(2, budget))
+
+    sig = lambda z: 1.0 / (1.0 + np.exp(-np.clip(z, -30, 30)))
+
+    def smax(v):
+        e = np.exp(v - v.max())
+        return e / e.sum()
+
+    pos = np.array([[rng.uniform(0, max(L[j] - 1, 0)) if typ[j] == "ord" else 0.0
+                     for j in range(dim)] for _ in range(n_part)])
+    vel = np.zeros((n_part, dim))                                  # ord & bin
+    logit = [[rng.standard_normal(L[j]) if typ[j] == "cat" else None
+              for j in range(dim)] for _ in range(n_part)]
+    vlog = [[np.zeros(L[j]) if typ[j] == "cat" else None
+             for j in range(dim)] for _ in range(n_part)]
+    last = [None] * n_part
+
+    def decode(i):
+        x = np.empty(dim, dtype=int)
+        for j in range(dim):
+            if typ[j] == "ord":
+                x[j] = int(np.clip(round(pos[i][j]), 0, L[j] - 1))
+            elif typ[j] == "bin":
+                x[j] = 1 if rng.random() < sig(vel[i][j]) else 0
+            else:
+                x[j] = int(rng.choice(L[j], p=smax(logit[i][j])))
+        return x
+
+    pbest_x = [None] * n_part
+    pbest_s = [-np.inf] * n_part
+    gbest_x, gbest_s = None, -np.inf
+    for i in range(n_part):
+        if problem.n >= budget:
+            break
+        xi = decode(i); last[i] = xi
+        s = problem.evaluate(xi)
+        pbest_x[i], pbest_s[i] = xi.copy(), s
+        if s > gbest_s:
+            gbest_s, gbest_x = s, xi.copy()
+    while problem.n < budget:
+        for i in range(n_part):
+            if problem.n >= budget:
+                break
+            pb, gb, cur = pbest_x[i], gbest_x, last[i]
+            for j in range(dim):
+                r1, r2 = rng.random(), rng.random()
+                if typ[j] == "ord":
+                    vel[i][j] = (w * vel[i][j] + c1 * r1 * (pb[j] - pos[i][j])
+                                 + c2 * r2 * (gb[j] - pos[i][j]))
+                    pos[i][j] = np.clip(pos[i][j] + vel[i][j], 0, L[j] - 1)
+                elif typ[j] == "bin":
+                    vel[i][j] = (w * vel[i][j] + c1 * r1 * (pb[j] - cur[j])
+                                 + c2 * r2 * (gb[j] - cur[j]))
+                else:
+                    p = smax(logit[i][j])
+                    oh_pb = np.zeros(L[j]); oh_pb[pb[j]] = 1.0
+                    oh_gb = np.zeros(L[j]); oh_gb[gb[j]] = 1.0
+                    vlog[i][j] = (w * vlog[i][j] + c1 * r1 * (oh_pb - p)
+                                  + c2 * r2 * (oh_gb - p))
+                    logit[i][j] = logit[i][j] + vlog[i][j]
+            xi = decode(i); last[i] = xi
+            s = problem.evaluate(xi)
+            if s > pbest_s[i]:
+                pbest_s[i], pbest_x[i] = s, xi.copy()
+            if s > gbest_s:
+                gbest_s, gbest_x = s, xi.copy()
+
+
 REGISTRY = {
     "random": run_random,
     "sobol": run_sobol,
@@ -419,6 +516,7 @@ REGISTRY = {
     "sa": run_sa,
     "ga": run_ga,
     "pso": run_pso,
+    "pso_mixed": run_pso_mixed,
     "aco": run_aco,
     "tpe": run_tpe,
     "smac": run_smac,
@@ -429,5 +527,6 @@ REGISTRY = {
 # (block_coord_local 은 사실상 block_decomp(coordinate-descent) 에 해당)
 from .blockwrap import make_block_decomp  # noqa: E402
 
-for _base in ("random", "sobol", "mlhs", "sa", "ga", "pso", "aco", "tpe", "smac", "botorch"):
+for _base in ("random", "sobol", "mlhs", "sa", "ga", "pso", "pso_mixed", "aco",
+              "tpe", "smac", "botorch"):
     REGISTRY[f"{_base}_blk"] = make_block_decomp(REGISTRY[_base])
