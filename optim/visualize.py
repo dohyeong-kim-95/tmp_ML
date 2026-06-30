@@ -113,6 +113,48 @@ def plot_by_kind(res, budget, path):
     return path
 
 
+def plot_block_lift(res, kind, budget, path):
+    """공정 비교: 각 base 에 블록을 줬을 때(flat -> +block) 와 block_coord_local 기준선.
+
+    base 별 flat vs *_blk 막대를 BM별 서브플롯으로, block_coord_local 을 점선으로.
+    → '우위가 블록 덕인지(=모두 상승) base 덕인지(=blk끼리 차이)'를 분리해 보여줌.
+    """
+    bases = ["random", "sobol", "mlhs", "sa", "ga", "tpe"]
+    bases = [b for b in bases if b in res["runs"] and f"{b}_blk" in res["runs"]]
+    fig, axes = plt.subplots(1, len(BMS), figsize=(5 * len(BMS), 4.6))
+    x = np.arange(len(bases)); w = 0.38
+
+    def clo(a, bm):
+        try:
+            return res["runs"][a][bm][kind]["closure"][str(budget)]
+        except KeyError:
+            return np.nan
+
+    for ax, bm in zip(axes, BMS):
+        ax.bar(x - w / 2, [clo(b, bm) for b in bases], w,
+               label="flat (no block)", color="#9bbcc4", edgecolor="k", lw=0.4)
+        ax.bar(x + w / 2, [clo(b + "_blk", bm) for b in bases], w,
+               label="+block (=blk)", color="#E1A53F", edgecolor="k", lw=0.4)
+        bc = clo("block_coord_local", bm)
+        if np.isfinite(bc):
+            ax.axhline(bc, ls="--", c="#C0504D", lw=1.6,
+                       label=f"block_coord_local ({bc:.0%})")
+        ax.set_title(f"{bm} | {kind} @{budget}")
+        ax.set_xticks(x); ax.set_xticklabels(bases, rotation=30)
+        ax.set_ylim(0, 1.05)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+        ax.grid(axis="y", alpha=0.25)
+        if bm == BMS[0]:
+            ax.legend(fontsize=8, loc="lower right")
+    fig.suptitle(f"Fair comparison ({kind}@{budget}): block structure given to "
+                 f"every base.  flat -> +block, vs block_coord_local", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
+
+
 def main():
     files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), "results*.json")))
     res = merge(files)
@@ -121,6 +163,11 @@ def main():
     for b in budgets:
         out.append(plot_budget(res, b, os.path.join(FIG_DIR, f"closure_{b}.png")))
         out.append(plot_by_kind(res, b, os.path.join(FIG_DIR, f"by_kind_{b}.png")))
+    # 공정 비교(블록 주입) — *_blk 결과가 있으면 생성
+    if any(a.endswith("_blk") for a in res["runs"]):
+        for kind in ("sum", "owa"):
+            out.append(plot_block_lift(res, kind, max(budgets),
+                                       os.path.join(FIG_DIR, f"block_lift_{kind}.png")))
     print("merged:", [os.path.basename(f) for f in files])
     for p in out:
         print("saved ->", p)
