@@ -39,10 +39,11 @@ def plot_budget(res, budget, path):
                  "bar = seed mean,  error bar = seed min~max "
                  "(single-run spread / downside)", fontsize=12)
     x = np.arange(len(algos))
-    w = 0.25
+    bms = [b for b in BMS if b in res["floor"]]
+    w = 0.8 / max(len(bms), 1)
     for ax, kind in zip(axes, kinds):
         floor_map = res["floor"]; ref_map = res["ref_opt"]
-        for bi, bm in enumerate(BMS):
+        for bi, bm in enumerate(bms):
             means, lo, hi = [], [], []
             fl = floor_map[bm][kind]; rf = ref_map[bm][kind]; den = max(rf - fl, 1e-9)
             for a in algos:
@@ -54,8 +55,8 @@ def plot_budget(res, budget, path):
                 m = clo.mean()
                 means.append(m)
                 lo.append(m - clo.min()); hi.append(clo.max() - m)
-            ax.bar(x + (bi - 1) * w, means, w, yerr=[lo, hi], capsize=3,
-                   color=BM_COLORS[bm], label=bm, error_kw=dict(alpha=0.5))
+            ax.bar(x + (bi - (len(bms) - 1) / 2) * w, means, w, yerr=[lo, hi],
+                   capsize=3, color=BM_COLORS[bm], label=bm, error_kw=dict(alpha=0.5))
         ax.axhline(1.0, ls="--", c="gray", lw=0.8)
         ax.set_title(f"kind = {kind}")
         ax.set_xticks(x); ax.set_xticklabels(algos)
@@ -80,9 +81,11 @@ def plot_by_kind(res, budget, path):
     fig, axes = plt.subplots(nrow, ncol, figsize=(4 * ncol, 3.2 * nrow), squeeze=False)
     x = np.arange(len(kinds))
     w = 0.25
+    bms = [b for b in BMS if b in res["floor"]]
+    w = 0.8 / max(len(bms), 1)
     for idx, a in enumerate(algos):
         ax = axes[idx // ncol][idx % ncol]
-        for bi, bm in enumerate(BMS):
+        for bi, bm in enumerate(bms):
             vals = []
             for kind in kinds:
                 c = _cell(res, a, bm, kind)
@@ -93,7 +96,8 @@ def plot_by_kind(res, budget, path):
                 else:
                     arr = np.array(c["best_true"][str(budget)])
                     vals.append(float(((arr - fl) / den).mean()))
-            ax.bar(x + (bi - 1) * w, vals, w, color=BM_COLORS[bm], label=bm)
+            ax.bar(x + (bi - (len(bms) - 1) / 2) * w, vals, w,
+                   color=BM_COLORS[bm], label=bm)
         ax.set_title(a)
         ax.set_xticks(x); ax.set_xticklabels(kinds)
         ax.set_ylim(0, 1.15); ax.axhline(1.0, ls="--", c="gray", lw=0.8)
@@ -119,9 +123,11 @@ def plot_block_lift(res, kind, budget, path):
     base 별 flat vs *_blk 막대를 BM별 서브플롯으로, block_coord_local 을 점선으로.
     → '우위가 블록 덕인지(=모두 상승) base 덕인지(=blk끼리 차이)'를 분리해 보여줌.
     """
-    bases = ["random", "sobol", "mlhs", "sa", "ga", "tpe"]
+    bases = ["random", "sobol", "mlhs", "sa", "ga", "pso", "aco", "tpe"]
     bases = [b for b in bases if b in res["runs"] and f"{b}_blk" in res["runs"]]
-    fig, axes = plt.subplots(1, len(BMS), figsize=(5 * len(BMS), 4.6))
+    bms = [b for b in BMS if b in res["floor"]]
+    fig, axes = plt.subplots(1, len(bms), figsize=(5 * len(bms), 4.6), squeeze=False)
+    axes = axes[0]
     x = np.arange(len(bases)); w = 0.38
 
     def clo(a, bm):
@@ -130,7 +136,7 @@ def plot_block_lift(res, kind, budget, path):
         except KeyError:
             return np.nan
 
-    for ax, bm in zip(axes, BMS):
+    for ax, bm in zip(axes, bms):
         ax.bar(x - w / 2, [clo(b, bm) for b in bases], w,
                label="flat (no block)", color="#9bbcc4", edgecolor="k", lw=0.4)
         ax.bar(x + w / 2, [clo(b + "_blk", bm) for b in bases], w,
@@ -144,7 +150,7 @@ def plot_block_lift(res, kind, budget, path):
         ax.set_ylim(0, 1.05)
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.grid(axis="y", alpha=0.25)
-        if bm == BMS[0]:
+        if bm == bms[0]:
             ax.legend(fontsize=8, loc="lower right")
     fig.suptitle(f"Fair comparison ({kind}@{budget}): block structure given to "
                  f"every base.  flat -> +block, vs block_coord_local", fontsize=12)
@@ -215,9 +221,10 @@ def plot_pool(res, budget, path):
         pool_pick(res, m, b, k, budget) for _, m in POOL for k in kinds)]
     fig, axes = plt.subplots(len(kinds), 1,
                              figsize=(max(8, 1.6 * len(labels)), 11))
-    fig.suptitle(f"축소 풀 closure @ budget={budget}   "
-                 "(메타휴리스틱=flat/blk중 best, SF=space-filling중 best)\n"
-                 "bar=seed mean, error=seed min~max, 막대위=선택변형", fontsize=12)
+    fig.suptitle(f"Reduced pool closure @ budget={budget}   "
+                 "(metaheuristics = best of flat/blk, SF = best of space-filling)\n"
+                 "bar = seed mean, error = seed min~max, label on bar = chosen variant",
+                 fontsize=12)
     x = np.arange(len(labels)); w = 0.8 / max(len(bms), 1)
     for ax, kind in zip(axes, kinds):
         for bi, bm in enumerate(bms):
