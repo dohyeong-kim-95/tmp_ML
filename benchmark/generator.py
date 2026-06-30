@@ -247,60 +247,62 @@ class BlackBoxBenchmark:
                 best_v, best_x = v, x.copy()
         return best_x, best_v
 
-    def _ga_opt(self, kind, n_eval=200000, pop=200, seed=0):
-        """전역 reference용 GA(노이즈 없는 효용 최대화).
+    def _block_coord_opt(self, kind, budget=20000, seed=0):
+        """노이즈 없는 block-coordinate 탐색(common→set2→set1 반복 + random-restart).
 
-        좌표상승은 교호작용이 강하면 참 최적에 못 닿는다(좌표 편향). 비분리/기만적
-        함수에서 더 높은 참 최적을 찾기 위해 대예산 GA로 천장을 올린다.
-        → reference가 '780 budget이 닿을 수 없는' 진짜 최적에 가깝도록.
+        AGENTS.md의 'global maxima(= block_coord_local@20000)'를 reference로 산출한다.
+        측정상 다중시작 좌표상승보다, 그리고 GA-200k보다 더 높은 천장을 준다(가장 강한
+        탐색기). 변수별 L후보를 한 번에 벡터평가(빠름), 전역 score-eval 예산 budget.
         """
-        from pymoo.core.problem import Problem as PymooProblem
-        from pymoo.algorithms.soo.nonconvex.ga import GA
-        from pymoo.operators.sampling.rnd import IntegerRandomSampling
-        from pymoo.operators.crossover.sbx import SBX
-        from pymoo.operators.mutation.pm import PM
-        from pymoo.operators.repair.rounding import RoundingRepair
-        from pymoo.termination.max_eval import MaximumFunctionCallTermination
-        from pymoo.optimize import minimize
-
+        rng = np.random.default_rng(seed)
         L = self.levels
+        blocks = [list(COMMON), list(SET2), list(SET1)]
+        sf = lambda X: self.score(X, kind)
 
-        class _P(PymooProblem):
-            def __init__(s):
-                super().__init__(n_var=N_VARS, n_obj=1,
-                                 xl=np.zeros(N_VARS), xu=(L - 1).astype(float),
-                                 vtype=int)
+        def fresh():
+            x = self.random_X(rng, 1)[0]
+            return x, float(sf(x[None, :])[0])
 
-            def _evaluate(s, X, out, *a, **k):
-                Xi = np.clip(np.round(X).astype(int), 0, L - 1)
-                out["F"] = (-self.score(Xi, kind)).reshape(-1, 1)
-
-        # eliminate_duplicates=False: 200k 예산에서 매 세대 O(pop^2) 중복검사가
-        # 병목이라 끈다(전역 reference 탐색엔 불필요).
-        algo = GA(pop_size=pop, sampling=IntegerRandomSampling(),
-                  crossover=SBX(prob=0.9, eta=15, repair=RoundingRepair()),
-                  mutation=PM(prob=0.9, eta=20, repair=RoundingRepair()),
-                  eliminate_duplicates=False)
-        res = minimize(_P(), algo, MaximumFunctionCallTermination(n_eval),
-                       seed=seed, verbose=False)
-        x = np.clip(np.round(res.X).astype(int), 0, L - 1)
-        return x, float(self.score(x[None, :], kind)[0])
+        used = 1
+        x, cur = fresh()
+        bx, bv = x.copy(), cur
+        while used < budget:
+            progressed = False
+            for blk in blocks:
+                for j in rng.permutation(blk):
+                    Lj = int(L[j])
+                    if used + Lj > budget:
+                        continue
+                    cand = np.tile(x, (Lj, 1))
+                    cand[:, j] = np.arange(Lj)
+                    vals = sf(cand)
+                    used += Lj
+                    bi = int(np.argmax(vals))
+                    if vals[bi] > cur + 1e-12:
+                        x, cur = cand[bi].copy(), float(vals[bi])
+                        progressed = True
+            if cur > bv:
+                bx, bv = x.copy(), cur
+            if not progressed:                       # 수렴 → random-restart
+                x, cur = fresh()
+                used += 1
+        return bx, bv
 
     def reference_optimum(self, kind, seed=0, n_restart=40, n_sweep=5,
-                          ga_n_eval=200000):
-        """scalarization 의 참조 최적해/효용.
+                          global_budget=20000):
+        """scalarization 의 참조 최적해/효용 = 가장 강한 탐색기의 최댓값.
 
-        앙상블: 다중시작 좌표상승 ∪ 대예산 GA(ga_n_eval) 중 더 높은 값.
-        좌표상승은 분리가능 칸(BM1)에서 정확하고, GA는 비분리/기만 칸(BM3/BM4)에서
-        좌표가 못 닿는 더 높은 최적을 찾는다 → 어느 칸에서도 천장이 후퇴하지 않음.
+        max(다중시작 좌표상승, block_coord@global_budget). block-coordinate@20k이
+        대부분 칸에서 더 높은(= 더 타이트한) 천장을 주고(global maxima), 좌표상승은
+        안전망. 어느 칸에서도 천장이 후퇴하지 않음.
         """
         rng = np.random.default_rng(seed)
         xc, vc = self._coord_opt(
             rng, lambda X: self.score(X, kind),
             maximize=True, n_restart=n_restart, n_sweep=n_sweep,
         )
-        if ga_n_eval and ga_n_eval > 0:
-            xg, vg = self._ga_opt(kind, n_eval=ga_n_eval, seed=seed)
-            if vg > vc:
-                return xg, float(vg)
+        if global_budget and global_budget > 0:
+            xb, vb = self._block_coord_opt(kind, budget=global_budget, seed=seed)
+            if vb > vc:
+                return xb, float(vb)
         return xc, float(vc)
