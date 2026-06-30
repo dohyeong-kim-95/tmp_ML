@@ -27,11 +27,16 @@ class Problem:
         self.curve = []          # 각 eval 후 best_true (anytime)
 
     def evaluate(self, x) -> float:
-        """관측(노이즈) 점수 반환. 내부적으로 참 점수 anytime 곡선 기록."""
+        """관측(노이즈) 점수 반환. 내부적으로 참 점수 anytime 곡선 기록.
+
+        raw(x)를 1회만 계산해 노이즈 관측·참 점수에 함께 사용(이전엔 bm.evaluate와
+        bm.score가 각각 raw를 호출 → 2회). 의미 동일, eval당 ~2배 빠름.
+        """
         x = np.asarray(x, dtype=int).reshape(-1)
-        y_noisy = self.bm.evaluate(x[None, :], self.rng)
+        y = self.bm.raw(x[None, :])
+        y_noisy = y + self.rng.normal(scale=self.bm.noise_scale, size=y.shape)
         s_obs = float(self.bm.scorer.score(y_noisy, self.kind)[0])
-        s_true = float(self.bm.score(x[None, :], self.kind)[0])
+        s_true = float(self.bm.scorer.score(y, self.kind)[0])
         self.n += 1
         if s_true > self.best_true:
             self.best_true = s_true
