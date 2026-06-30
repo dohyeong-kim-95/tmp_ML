@@ -261,6 +261,58 @@ def plot_pool(res, budget, path):
     return path
 
 
+def plot_pool_budgets(res, bm, budgets, path):
+    """단일 BM에서 예산(180/780/2400)을 초록/노랑/빨강 그룹막대로 비교.
+
+    x축=풀 6항목, 그룹막대=예산, 3 kind 서브플롯. 한 그림에서 예산이 커질수록
+    각 방법이 어떻게 변하는지(=budget×방법 crossover)를 직접 본다.
+    오차막대=seed min~max, 막대위=선택변형(blk).
+    """
+    labels = [lbl for lbl, _ in POOL]
+    kinds = ScoreSystem.KINDS
+    colors = {"180": "#4C9F70", "780": "#E1A53F", "2400": "#C0504D"}  # 초록/노랑/빨강
+    fig, axes = plt.subplots(len(kinds), 1,
+                             figsize=(max(8, 1.6 * len(labels)), 11))
+    fig.suptitle(f"Reduced pool closure on {bm}   "
+                 "(grouped bars = budget 180 / 780 / 2400)\n"
+                 "bar = seed mean, error = seed min~max, label on bar = chosen variant",
+                 fontsize=12)
+    x = np.arange(len(labels)); w = 0.8 / max(len(budgets), 1)
+    for ax, kind in zip(axes, kinds):
+        for bi, b in enumerate(budgets):
+            means, lo, hi, tags = [], [], [], []
+            for lbl, members in POOL:
+                p = pool_pick(res, members, bm, kind, b)
+                if p is None:
+                    means.append(np.nan); lo.append(0); hi.append(0); tags.append("")
+                    continue
+                win = p[4]
+                arr = per_seed_closures(res, win, bm, kind, b)
+                m = float(arr.mean())
+                means.append(m); lo.append(m - arr.min()); hi.append(arr.max() - m)
+                tags.append("blk" if win.endswith("_blk") else "")
+            off = (bi - (len(budgets) - 1) / 2) * w
+            ax.bar(x + off, means, w, yerr=[lo, hi], capsize=2,
+                   color=colors.get(str(b), "#888"), label=f"@{b}",
+                   error_kw=dict(alpha=0.4))
+            for xi, (m, tag) in enumerate(zip(means, tags)):
+                if tag and np.isfinite(m):
+                    ax.text(x[xi] + off, m + 0.01, tag, ha="center", va="bottom",
+                            fontsize=5, rotation=90, color="#333")
+        ax.axhline(1.0, ls="--", c="gray", lw=0.8)
+        ax.set_title(f"kind = {kind}")
+        ax.set_xticks(x); ax.set_xticklabels(labels)
+        ax.set_ylabel("closure"); ax.set_ylim(0, 1.2)
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
+        ax.legend(loc="upper right", ncol=len(budgets), fontsize=9, title="budget")
+        ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
+
+
 def main():
     files = sorted(glob.glob(os.path.join(os.path.dirname(__file__), "results*.json")))
     res = merge(files)
@@ -270,6 +322,10 @@ def main():
         out.append(plot_budget(res, b, os.path.join(FIG_DIR, f"closure_{b}.png")))
         out.append(plot_by_kind(res, b, os.path.join(FIG_DIR, f"by_kind_{b}.png")))
         out.append(plot_pool(res, b, os.path.join(FIG_DIR, f"pool_{b}.png")))
+    # 예산을 초록/노랑/빨강 그룹막대로(단일 BM에서 budget×방법 crossover 한눈에)
+    for bm in [b for b in BMS if b in res["floor"]]:
+        out.append(plot_pool_budgets(res, bm, budgets,
+                                     os.path.join(FIG_DIR, f"pool_budgets_{bm}.png")))
     # 공정 비교(블록 주입) — *_blk 결과가 있으면 생성
     if any(a.endswith("_blk") for a in res["runs"]):
         for kind in ("sum", "owa"):
