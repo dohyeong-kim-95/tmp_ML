@@ -34,6 +34,7 @@ POOL = [
     ("GA", ["ga", "ga_blk"]),
     ("PSO", ["pso", "pso_blk"]),
     ("ACO", ["aco", "aco_blk"]),
+    ("TPE", ["tpe", "tpe_blk"]),
 ]
 
 
