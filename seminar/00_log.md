@@ -748,3 +748,26 @@ S=공통) + 질문: "random restart 어차피 할 건데 단점 아니지 않나
 위험이 실재함을 보여줌.
 
 ---
+
+## 30. Coordinate Descent와의 연결 — 추가 조사 방향
+
+### 사용자 요청
+block_coord_local이 Coordinate Descent(Ascent)의 일종이라는 점을 짚고, 더 파볼 가치가 있다는
+내용을 발표자료에 넣고 싶음.
+
+### 검증자 정리 — 왜 Coordinate Descent인가 + 파볼 3갈래
+- **정의 연결**: "한 변수(블록)만 고정하고 나머지는 그대로 둔 채 값을 바꿔 최선을 찾고 다음으로
+  넘어간다"는 동작은 최적화 이론의 (Block) Coordinate Descent/Ascent 그 자체. 이 프로젝트는
+  블록 단위(common/set1/set2)로 순환하므로 특히 Block Coordinate Descent(BCD)에 해당.
+- **파볼 방향 1 (수렴이론)**: 고전 좌표하강 수렴이론(cyclic CD, Gauss-Southwell 등)은 목적함수가
+  매끄럽고 좌표별 분리 가능(separable에 가까움)할 때 국소최적(정지점) 수렴을 보장 — 이 프로젝트의
+  effect sparsity(주효과 지배·저차 교호) 가정과 정확히 일치. block_coord_local이 이 문제에서
+  잘 먹히는 이유를 고전 최적화 문헌으로 뒷받침 가능.
+- **파볼 방향 2 (실패조건)**: coordinate descent가 비분리·강한 교호작용 함수에서 국소최적에
+  갇히는 것도 잘 알려진 한계 — FINDINGS.md의 "전이조건"(교호가 주효과를 압도하면 좌표법 붕괴)과
+  이론·실험이 정확히 부합. "관찰된 현상이 우연이 아니라 이론이 예측하는 그대로"라는 서사 가능.
+- **파볼 방향 3 (계보)**: Gibbs sampling, ICM(Iterated Conditional Modes) 등도 "한 변수씩 조건부
+  최적화"하는 같은 계열 — "왜 이 단순한 고전 기법이 최신 BO/GA를 이기는가"에 대해 "새 발견이
+  아니라 문제 구조가 이 기법이 통하는 조건과 맞아떨어진 것"이라는 설득력 있는 서사 구성 가능.
+
+---
