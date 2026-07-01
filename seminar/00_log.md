@@ -268,3 +268,27 @@ prior 주입이라 일관됨.
 - **OWA/bottom-k OWA, 단순가중합**: 둘 다 정확. "전제조건이 틀리면 다른 지표 필요"라는 메타 코멘트도 적절.
 
 ---
+
+## 11. 후속 질문 2건 — 코드로 검증
+
+### Q1: "타이브레이크(증강)항에 원래 가중치가 없나요?"
+`benchmark/scoring.py:64`로 확인: `return -((w * gap).max(axis=-1) + rho * gap.sum(axis=-1))`.
+`max`항엔 `w*gap`(가중치 적용), `rho*gap.sum(...)`항은 **가중치 없는 순수 합**. 문서(00_Plan.md)와
+코드 일치. 세션10 지적("증강항에 wi 빼야 함") 확정.
+
+### Q2: "gradient 기반 알고리즘이 있었다면 smooth가 필요했을까? 이산공간에서 gradient descent가
+가능한가? 모델 기반이어야 하지 않나?"
+- **사용자 직관이 정확함**: 이산공간 자체엔 gradient가 정의 안 되므로, gradient 기반 방법은 반드시
+  (i) 연속완화(continuous relaxation) 또는 (ii) surrogate 모델(GP/NN 등 태생적으로 매끄러운 모델)을
+  거쳐야 함.
+- **실제로 이미 존재**: `botorch`(README: "GP-BO, qLogEI, 연속완화")가 정확히 이 케이스 — X를
+  연속공간으로 relax하고 acquisition을 L-BFGS 등 gradient로 최적화 후 이산값으로 재투영.
+- **세션10 답변 정정**: gradient가 걸리는 대상은 **raw score 수식(Chebyshev max/min)이 아니라
+  GP가 학습한 surrogate**. GP posterior는 원함수의 매끄러움과 무관하게 커널 기반으로 항상 매끄러움
+  → gradient 기반 알고리즘이 포트폴리오에 있어도(botorch) raw score의 smooth(softmin) 버전은
+  여전히 불필요. 더 정확한 인과: "이 파이프라인의 모든 알고리즘은 raw score 수식을 직접 미분하지
+  않고 항상 함수값(혹은 그 값을 학습한 매끄러운 surrogate)만으로 의사결정한다" — softmin이 필요해지는
+  유일한 경우는 Chebyshev 공식 자체를 화이트박스로 직접 analytic 미분해 최적화하려 할 때뿐이며,
+  포트폴리오엔 그런 알고리즘 없음.
+
+---
