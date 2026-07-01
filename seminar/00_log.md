@@ -292,3 +292,22 @@ prior 주입이라 일관됨.
   포트폴리오엔 그런 알고리즘 없음.
 
 ---
+
+## 12. 재질문 — "블랙박스라 미분불가능하니 Chebyshev를 미분불가능하게 써도 되는 것인가?"
+
+### 검증자 답변 (핵심 확인 + 정밀화 2가지)
+- **핵심 인과는 정확함**: X가 이산이든 연속이든 `calculator(X)→Y`가 블랙박스라 dY/dX 자체가
+  존재하지 않음 → Chebyshev가 매끄러워도 뒤에 연결된 Y(X)에서 체인룰이 이미 끊김. "Chebyshev를
+  미분가능하게" 만드는 것은 이 파이프라인 어디서도 무의미.
+- **BoTorch와 모순 없음을 한 겹 더**: BoTorch의 gradient는 GP가 **관측된 score 숫자들**로부터
+  학습한 surrogate에 걸림. GP는 각 X의 score가 어떤 공식(max/min이든 softmin이든)으로 계산됐는지
+  모르고 그냥 **스칼라 라벨**로만 소비 → 생성 공식의 미분가능성 자체가 GP 입장에선 무의미.
+- **추가 정밀화**: 설령 화이트박스+연속X를 가정해 raw Chebyshev를 직접 analytic 미분하려 해도,
+  max/min은 **동점(tie, 측도 0)만 제외하면 거의 모든 곳에서 미분 가능**한 piecewise-linear
+  함수(subgradient 항상 존재). softmin의 실제 역할은 "미분가능성 확보"가 아니라 **동점 근처
+  꺾임(kink)이 gradient descent 수렴을 느리게 만드는 걸 완화하는 최적화 편의 장치**에 가까움.
+- **한 문장 요약**: "이 파이프라인에선 아무도 raw score 수식을 analytic하게 미분하지 않는다 —
+  블랙박스라 원천적으로 불가능하고(X 타입 무관), 화이트박스였어도 아무도 그렇게 안 한다
+  (BoTorch조차 surrogate만 미분). 그래서 hard-min이든 soft-min이든 상관없다."
+
+---
