@@ -564,3 +564,34 @@ score 기준 permutation importance가 맞는가? (score가 최악 변수를 감
     만해야만 제거, 단 하나에서라도 중요하면 보존.
 
 ---
+
+## 23. 변수제거 workflow 정리 + stepwise vs local search 개념 오해 정정
+
+### 질문 1: 변수 제거용 importance workflow 재정리 요청
+### 질문 2: "stepwise가 calculator 호출 없는 순수 계산"이 이해 안 됨 — column ±1 sweep하며
+점수 보는 게 stepwise 아닌가?
+
+### 검증자 정정 — 핵심 오해: stepwise 변수선택 ≠ 좌표 local search
+사용자가 묘사한 "column sweep ±1 → 점수확인 → 다음 column"은 **stepwise 변수선택이 아니라
+block_coord_local류 좌표 local search(실제 최적화)**임. 완전히 다른 두 절차:
+- **Stepwise 변수선택(screening)**: 이미 확보된 **정적 표**(N행×30열 X+score, 다 채워짐) 위에서
+  "어떤 열(컬럼)을 RF 입력으로 쓸지" 골라가며 재학습 — X값 자체는 안 건드림, calculator 호출 없음.
+- **Local search(실제 최적화)**: 새 후보 X를 만들어(한 컬럼 값을 ±1) **진짜 평가**해야 점수를 앎 —
+  매번 calculator 호출, 실제 예산(180/780/2400) 소모.
+표로 대비: 대상(정적표 vs 새후보) / sweep의 의미(모델입력 열 선택 vs X값 자체 변경) / calculator
+호출(없음 vs 매번) / 비용(RF 재학습 수초 vs 1회 평가=1분).
+
+### 질문 1 답변 — 변수제거 이상적 workflow (세션22 보수적 기준 반영, 6단계)
+1. 데이터 확보: 장기 누적 데이터(~10^4)에서 (X,Y1..Y6) N개(예 200~300) 재사용, 새 calculator
+   호출 없음.
+2. Y별 RF 학습: Y1~Y6 각각 별도 RF(Yₘ~X1..X30), 데이터는 동일 정적 표.
+3. Y별 permutation importance → 30×6 중요도 행렬.
+4. Y별 stepwise(forward selection): Yₘ마다 중요도 순위대로 변수 추가하며 CV 성능 확인, elbow에서
+   개수 결정 (전부 기존 표 재사용, calculator 호출 0회).
+5. 합집합(union): 6개 Yₘ 각각의 "중요" 변수 집합을 합집합으로 통합 — 하나라도 중요하면 보존.
+6. 제거 확정+축소: 합집합 밖 변수만 제거(관측 최적/최빈값으로 고정), 남은 변수로 축소된
+   탐색공간에서 **여기서부터 진짜 최적화 시작**(block_coord_local 등, calculator 호출·예산 소모 시작).
+핵심 경계: 1~5단계는 전부 "이미 있는 표 재사용", 6단계부터 진짜 예산 소모 — 이 경계를 명확히
+구분해서 발표할 것.
+
+---
