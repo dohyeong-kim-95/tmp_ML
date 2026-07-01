@@ -358,3 +358,21 @@ smoothing 불필요"라 생각했으나, 실은 "지금 쓰는 알고리즘이 g
   B(혹은 raw Y 예측 가능한 구조)가 그 목표엔 더 직접적으로 부합한다는 트레이드오프를 솔직히 언급할 것.
 
 ---
+
+## 14. Score 체계 최종본 — 남은 두 빈칸 확정
+
+### 검증 요청 1: "Augmented Chebyshev가 repo 말고 일반적으로도 wi를 증강항에 반영 안 하는지"
+확인 결과 **일반 관례가 맞음**. Wierzbicki의 achievement scalarizing function, Miettinen
+*Nonlinear Multiobjective Optimization*(1999) 등 표준 정의: `max_i[wᵢ(zᵢ*−zᵢ)] + ρ·Σ(zᵢ*−zᵢ)`.
+증강항이 무가중치인 이유: max항의 wᵢ는 "선호 반영" 역할, 증강항은 순전히 "약지배(weakly Pareto)
+해 회피"를 위한 수학적 보정 장치라 선호(가중치)와 무관하게 원시 gap 합을 씀. 레포 고유 구현이
+아니라 **표준 정의를 따른 것** — 발표 시 "표준 Augmented Tchebycheff 정의를 따름"으로 서술 권장.
+
+### 빈칸 2: "smooth(softmin) 버전이 왜 불필요한가" — 확정 문구
+세션12~13 논리를 압축: "이 설계는 score를 먼저 스칼라화한 뒤 그 숫자 하나에만 surrogate를 붙이고,
+gradient는 그 surrogate에만 건다(score 수식 자체를 analytic하게 미분하지 않는다) → score 수식의
+미분가능성 자체가 불필요. (대안 설계 B — 6개 목적 개별 surrogate + acquisition시 스칼라화를
+직접 미분 — 를 택했다면 max의 꺾임 완화를 위해 softmin이 필요했을 것)." "이산공간이라서"라는
+부정확한 인과 대신 "어디서 gradient를 거는가"에 기반한 설명으로 최종 확정.
+
+---
