@@ -311,3 +311,31 @@ prior 주입이라 일관됨.
   (BoTorch조차 surrogate만 미분). 그래서 hard-min이든 soft-min이든 상관없다."
 
 ---
+
+## 13. 재구성 질문 — "나중에 gradient descent 쓰는 알고리즘이면 달라지나? PSO는?"
+
+### 사용자 프레이밍
+GT 반응표면이 smooth인지 모르는 상태에서, X는 어차피 이산 선택. 처음엔 "X가 이산이라 score도
+smoothing 불필요"라 생각했으나, 실은 "지금 쓰는 알고리즘이 gradient descent를 안 돌려서"라는
+것으로 정정됨. 그럼 나중에 gradient descent 쓰는 알고리즘을 쓰면 달라지는가? PSO는 확률기반
+근사기라 내부적으로 연속적인데 어떤가?
+
+### 검증자 답변 (코드로 확인, `optim/algos.py`)
+- **1층 (불변)**: 참 목적함수(calculator→Y)의 진짜 gradient는 블랙박스라 어떤 알고리즘을 써도
+  여전히 못 구함.
+- **2층 (진짜 갈림길, 아키텍처에 따라 달라짐)**: 코드 확인 결과 이 레포의 botorch는
+  `SingleTaskGP(Xt, Ys)` — **Ys는 이미 Chebyshev/OWA/sum으로 스칼라화된 값**. 즉 "블랙박스 Y 관측
+  → 스칼라화 → 숫자 하나에 단일 GP 학습 → acquisition gradient는 GP에만 걸림" 구조라 Chebyshev의
+  내부 max/min 구조는 GP·acquisition 어디에도 노출되지 않음 → 이 레포에선 상관없음.
+  **다른 설계였다면 다름**: 6개 Y 각각에 multi-output GP를 붙이고, acquisition 최적화 시점에
+  "GP 예측값들 → Chebyshev(예측값) → 이 스칼라를 x로 미분" 하는 구조(다목적 BO 문헌의 ParEGO류)라면
+  max의 꺾임(kink)이 실제로 gradient 기반 acquisition 최적화를 방해 → 이 경우엔 softmin이 진짜 도움.
+  → "gradient 쓰는 알고리즘이면 달라지나"의 정확한 답: **어떤 지점에서 gradient를 거는지(스칼라화
+  이후 단일 surrogate 미분 vs 스칼라화 이전 multi-output 예측값 위에서 미분)에 따라 다르다.**
+- **PSO**: 내부 위치/속도 표현이 연속적인 것은 맞음(이 레포의 `run_pso_mixed`도 categorical엔
+  logit+softmax 사용). 그러나 PSO는 **fitness 값(숫자)만 비교**해 개인최고/전체최고로 끌어당길 뿐
+  score를 한 번도 미분하지 않는 0차(derivative-free) 방법 — GA/SA/ACO와 동일 계열. "탐색공간
+  표현의 연속성"과 "score gradient 필요 여부"는 서로 다른 축이며, 진짜 기준은 "score 수식을 x에
+  대해 실제로 미분하는가"임. PSO는 아니므로 smooth score 불필요 쪽에 남음.
+
+---
