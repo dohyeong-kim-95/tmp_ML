@@ -14,7 +14,7 @@ from benchmark.generator import N_VARS
 class Problem:
     """단일 (benchmark, score-kind) 위에서 최대화 문제를 정의."""
 
-    def __init__(self, bm, kind, seed):
+    def __init__(self, bm, kind, seed, budget=None):
         self.bm = bm
         self.kind = kind
         self.rng = np.random.default_rng(seed)
@@ -25,6 +25,9 @@ class Problem:
         self.best_true = -np.inf
         self.best_x = None
         self.curve = []          # 각 eval 후 best_true (anytime)
+        self.budget = budget     # 알려진 예산(선택). 초과 호출 시 경고에 사용.
+        self._overshoot_warned = False
+        self.last_incomplete = {}
 
     def evaluate(self, x) -> float:
         """관측(노이즈) 점수 반환. 내부적으로 참 점수 anytime 곡선 기록.
@@ -38,6 +41,11 @@ class Problem:
         s_obs = float(self.bm.scorer.score(y_noisy, self.kind)[0])
         s_true = float(self.bm.scorer.score(y, self.kind)[0])
         self.n += 1
+        if (self.budget is not None and self.n > self.budget
+                and not self._overshoot_warned):
+            print(f"[Problem] warning: evaluate() 가 budget={self.budget} 을 넘어 "
+                  f"호출됨(n={self.n}) — 어댑터가 예산을 초과 평가하고 있음")
+            self._overshoot_warned = True
         if s_true > self.best_true:
             self.best_true = s_true
             self.best_x = x.copy()
@@ -45,9 +53,20 @@ class Problem:
         return s_obs
 
     def checkpoints(self, budgets):
-        """예산별 best_true (곡선에서 추출)."""
+        """예산별 best_true (곡선에서 추출).
+
+        len(curve) < b 이면 어댑터가 그 예산만큼 평가를 채우지 못했다는 뜻(조기
+        종료/예외) — 경고를 출력하고 self.last_incomplete[b]=True 로 표시한다.
+        반환 형식(dict[int, float])은 기존과 동일(하위호환).
+        """
         out = {}
+        self.last_incomplete = {}
         for b in budgets:
+            incomplete = len(self.curve) < b
+            self.last_incomplete[b] = incomplete
+            if incomplete:
+                print(f"[Problem] warning: checkpoint budget={b} 요청했지만 "
+                      f"{len(self.curve)}회만 평가됨 — incomplete 로 표시")
             idx = min(b, len(self.curve)) - 1
             out[b] = self.curve[idx] if idx >= 0 else -np.inf
         return out

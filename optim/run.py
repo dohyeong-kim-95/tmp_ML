@@ -117,17 +117,22 @@ def main():
                     seeds_done = list(range(max(len(v) for v in prev_best.values())))
                 else:
                     seeds_done = []
+                # incomplete: 이 budget 이 어느 seed 에서든 조기종료로 채워지지
+                # 못한 적 있으면 True(하위호환: 구 결과에는 아예 키가 없음).
+                incomplete = dict((prev or {}).get("incomplete", {}))
                 t0 = time.time()
                 for s in seed_indices:
                     if args.merge_extend and s in seeds_done:
                         print(f"[{algo:8s}] {name} {kind:9s} seed {s} 는 이미 "
                               f"포함돼 있음 — 중복 방지로 스킵")
                         continue
-                    prob = Problem(bm, kind, seed=1000 * s + 7)
+                    prob = Problem(bm, kind, seed=1000 * s + 7, budget=args.max_budget)
                     run_fn(prob, args.max_budget, seed=s)
                     cp = prob.checkpoints(checkpoints)
                     for b in checkpoints:
                         cells[str(b)].append(cp[b])
+                        if prob.last_incomplete.get(b):
+                            incomplete[str(b)] = True
                     seeds_done.append(s)
                 dt = time.time() - t0 + (prev["sec"] if prev else 0.0)
                 floor = res["floor"][name][kind]
@@ -140,6 +145,7 @@ def main():
                     "closure": closure,
                     "sec": dt,
                     "seeds": seeds_done,
+                    "incomplete": incomplete,
                 }
                 print(f"[{algo:8s}] {name} {kind:9s} "
                       + " ".join(f"clo@{b}={closure[str(b)]:.2%}"
