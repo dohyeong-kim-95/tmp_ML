@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 
 from benchmark.generator import COMMON, SET1, SET2
-from .design import marginal_balanced_design
+from .design import marginal_balanced_design, default_n_init
 
 BLOCKS = [("common", list(COMMON)), ("set2", list(SET2)), ("set1", list(SET1))]
 
@@ -66,7 +66,7 @@ def make_block_decomp(base_fn, rounds=3):
         rng = np.random.default_rng(seed)
 
         # 공통 초기점(모두 동일 이점): marginal-balanced best
-        n_init = max(problem.dim, min(2 * problem.dim, budget // 5))
+        n_init = default_n_init(problem.dim, budget)
         init = marginal_balanced_design(L, min(n_init, budget), rng)
         inc, best = None, -np.inf
         for i in range(init.shape[0]):

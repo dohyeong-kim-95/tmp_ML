@@ -16,6 +16,16 @@ from __future__ import annotations
 import numpy as np
 
 
+def default_n_init(dim, budget):
+    """초기설계(marginal-balanced) 크기 공식(공용).
+
+    dim 이상, budget//5 이하, 상한 2*dim. algos.py(run_block_coord_local)와
+    blockwrap.py(make_block_decomp)에 동일한 식이 복붙돼 있어 한쪽만 고치면
+    초기설계 이점의 공정성이 깨지던 문제를 막기 위해 공용 함수로 추출.
+    """
+    return max(dim, min(2 * dim, budget // 5))
+
+
 def marginal_balanced_design(levels, n, rng):
     """(n, dim) 정수 설계. 각 변수 j는 [0..levels[j]-1] 를 균등/순열 반복."""
     levels = np.asarray(levels, dtype=int)

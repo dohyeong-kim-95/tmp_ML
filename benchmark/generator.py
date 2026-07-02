@@ -192,6 +192,17 @@ class BlackBoxBenchmark:
         y = y + rng.normal(scale=self.noise_scale, size=y.shape)
         return y
 
+    # ---- 정규화 범위(공개 프로퍼티) -------------------------------------------
+    @property
+    def y_lo(self):
+        """목적별 raw-y 도달 가능 최솟값(정규화 하한). 읽기 전용."""
+        return self._y_lo
+
+    @property
+    def y_hi(self):
+        """목적별 raw-y 도달 가능 최댓값(정규화 상한). 읽기 전용."""
+        return self._y_hi
+
     # ---- 점수(정규화/3종 scalarization) — scoring 모듈에 위임 ----------------
     SCALARIZATIONS = ScoreSystem.KINDS  # ("sum", "chebyshev", "owa")
 

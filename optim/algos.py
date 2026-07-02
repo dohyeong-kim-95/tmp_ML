@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from benchmark.generator import COMMON, SET1, SET2
-from .design import marginal_balanced_design
+from .design import marginal_balanced_design, default_n_init
 
 
 # --------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def run_block_coord_local(problem, budget, seed,
         cache[t] = s
         return s
 
-    n_init = n_init or max(problem.dim, min(2 * problem.dim, budget // 5))
+    n_init = n_init or default_n_init(problem.dim, budget)
     init = marginal_balanced_design(L, min(n_init, budget), rng)
     x, cur = None, -np.inf
     for i in range(init.shape[0]):

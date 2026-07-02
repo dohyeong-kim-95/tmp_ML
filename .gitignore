@@ -1,3 +1,24 @@
 __pycache__/
 *.pyc
+*.pyo
 optim/results*.json
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 패키징/빌드 산출물
+*.egg-info/
+dist/
+build/
+
+# OS/에디터
+.DS_Store
+.idea/
+.vscode/
+
+# 테스트/타입체크 캐시
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
