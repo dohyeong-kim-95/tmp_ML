@@ -72,8 +72,14 @@ def main():
     if (args.append or args.merge_extend) and os.path.exists(args.out):
         with open(args.out) as f:
             res = json.load(f)
-    res["meta"] = {"budgets": budgets, "max_budget": args.max_budget,
-                   "seeds": args.seeds}
+    # meta는 덮어쓰지 않고 budgets 를 합집합으로 병합(이전에 기록된 예산,
+    # 예: 2400 을 180/780짜리 append 가 조용히 지우지 않도록).
+    prev_meta = res.get("meta", {})
+    res["meta"] = {
+        "budgets": sorted(set(prev_meta.get("budgets", [])) | set(budgets)),
+        "max_budget": max(prev_meta.get("max_budget", 0), args.max_budget),
+        "seeds": max(prev_meta.get("seeds", 0), args.seeds),
+    }
 
     # BM 인스턴스 캐시(결정적; 노이즈는 problem 단계에서)
     bm_cache = {name: BlackBoxBenchmark(configs.ALL[name]) for name in bms}
@@ -94,30 +100,50 @@ def main():
             bm = bm_cache[name]
             res["runs"][algo].setdefault(name, {})
             for kind in kinds:
-                # merge-extend: 기존 seed 결과를 보존하고 새 seed를 이어붙임
+                # merge-extend: 기존 seed 결과를 보존하고 새 seed를 이어붙임.
+                #  (a) prev 의 모든 budget 키를 보존(현재 checkpoints 에 없어도 유실 금지),
+                #  (b) prev 에 없는 budget 은 빈 리스트로 시작(KeyError 금지),
+                #  (c) 같은 seed 를 다시 돌리면 경고 후 스킵.
                 prev = res["runs"][algo][name].get(kind) if args.merge_extend else None
-                cells = ({str(b): list(prev["best_true"][str(b)]) for b in checkpoints}
-                         if prev else {str(b): [] for b in checkpoints})
+                prev_best = (prev or {}).get("best_true", {})
+                cells = {b: list(v) for b, v in prev_best.items()}
+                for b in checkpoints:
+                    cells.setdefault(str(b), [])
+                # seed 이력: 신규 포맷은 "seeds" 를 명시 저장. 구 포맷(이력 없음)은
+                # seed_indices 가 항상 0..n-1 순으로 쌓였다고 가정해 길이로부터 추정.
+                if prev is not None and "seeds" in prev:
+                    seeds_done = list(prev["seeds"])
+                elif prev_best:
+                    seeds_done = list(range(max(len(v) for v in prev_best.values())))
+                else:
+                    seeds_done = []
                 t0 = time.time()
                 for s in seed_indices:
+                    if args.merge_extend and s in seeds_done:
+                        print(f"[{algo:8s}] {name} {kind:9s} seed {s} 는 이미 "
+                              f"포함돼 있음 — 중복 방지로 스킵")
+                        continue
                     prob = Problem(bm, kind, seed=1000 * s + 7)
                     run_fn(prob, args.max_budget, seed=s)
                     cp = prob.checkpoints(checkpoints)
                     for b in checkpoints:
                         cells[str(b)].append(cp[b])
+                    seeds_done.append(s)
                 dt = time.time() - t0 + (prev["sec"] if prev else 0.0)
                 floor = res["floor"][name][kind]
                 ref = res["ref_opt"][name][kind]
                 denom = max(ref - floor, 1e-9)
-                closure = {b: (float(np.mean(cells[str(b)])) - floor) / denom
-                           for b in checkpoints}
+                closure = {b: (float(np.mean(v)) - floor) / denom
+                           for b, v in cells.items() if v}
                 res["runs"][algo][name][kind] = {
                     "best_true": cells,
-                    "closure": {str(b): closure[b] for b in checkpoints},
+                    "closure": closure,
                     "sec": dt,
+                    "seeds": seeds_done,
                 }
                 print(f"[{algo:8s}] {name} {kind:9s} "
-                      + " ".join(f"clo@{b}={closure[b]:.2%}" for b in checkpoints)
+                      + " ".join(f"clo@{b}={closure[str(b)]:.2%}"
+                                for b in checkpoints if str(b) in closure)
                       + f"  ({dt:.1f}s)")
 
         with open(args.out, "w") as f:
