@@ -145,7 +145,9 @@ def run_sa(problem, budget, seed):
     rng = np.random.default_rng(seed)
     L = problem.levels
     # warm-up: 무작위점 평가 → best 는 incumbent, 점수 분포는 T0
-    n_warm = min(20, max(2, budget // 20))
+    # sub_budget이 작은(blockwrap 후반 블록) 경우 warm-up만으로 budget을 넘겨
+    # 다음 블록 예산을 잠식하지 않도록 budget 이내로 클램프(B5).
+    n_warm = min(20, max(2, budget // 20), budget)
     warm_x = [np.array([rng.integers(0, l) for l in L]) for _ in range(n_warm)]
     warm_s = [problem.evaluate(wx) for wx in warm_x]
     T0 = max(np.std(warm_s), 1e-6)

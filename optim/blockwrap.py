@@ -24,6 +24,11 @@ from .design import marginal_balanced_design
 BLOCKS = [("common", list(COMMON)), ("set2", list(SET2)), ("set1", list(SET1))]
 
 
+class BudgetExhausted(Exception):
+    """전역 평가 예산 소진 — SubProblem.evaluate가 던져 base 옵티마이저의 남은
+    반복을 끊는다(예전엔 가짜 상수를 돌려줘 base 내부 상태를 오염시켰음, B6)."""
+
+
 class SubProblem:
     """전체 Problem 의 한 블록(active 변수)만 노출하는 부분공간 view."""
 
@@ -40,9 +45,9 @@ class SubProblem:
         self.best_sub = None
 
     def evaluate(self, sub_x):
-        # 전역 예산 하드캡: 초과 시 실제 평가 없이 상수 반환(overshoot 방지)
+        # 전역 예산 하드캡: 초과 시 가짜 상수 대신 예외를 던져 base 루프를 끊는다.
         if self.problem.n >= self.global_budget:
-            return self.best_obs if np.isfinite(self.best_obs) else 0.0
+            raise BudgetExhausted(self.global_budget)
         full = self.incumbent.copy()
         full[self.active] = np.asarray(sub_x, dtype=int)
         s = self.problem.evaluate(full)
@@ -83,16 +88,24 @@ def make_block_decomp(base_fn, rounds=3):
             sub_budget = min(rem_budget, max(1, int(round(rem_budget * w / max(rem_weight, 1)))))
             rem_weight -= w
             sub = SubProblem(problem, inc, blk, budget)
-            base_fn(sub, sub_budget, seed + 101 * idx + 7)
+            try:
+                base_fn(sub, sub_budget, seed + 101 * idx + 7)
+            except BudgetExhausted:
+                pass  # 전역 예산 소진: 이 블록까지의 최선을 반영하고 스케줄 종료
             if sub.best_sub is not None:
                 inc = inc.copy()
                 inc[blk] = sub.best_sub
+            if problem.n >= budget:
+                break
 
         # 잔여 예산: common 재최적화로 소진(진전 없으면 종료)
         guard = 0
         while problem.n < budget and guard < 20:
             sub = SubProblem(problem, inc, BLOCKS[0][1], budget)
-            base_fn(sub, budget - problem.n, seed + 9000 + guard)
+            try:
+                base_fn(sub, budget - problem.n, seed + 9000 + guard)
+            except BudgetExhausted:
+                pass
             if sub.n == 0:
                 break
             if sub.best_sub is not None:
