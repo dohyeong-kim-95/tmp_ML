@@ -1,15 +1,36 @@
 # bm3_visualize.py
 # repo root 에서 실행:
-#   python bm3_visualize.py
+#   python -m optim.bm3_visualize
 #
 # 저장 파일:
-#   bm3_explain.png
+#   optim/figs/bm3_explain.png
+
+import json
+import os
 
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from benchmark import configs
 from benchmark.generator import BlackBoxBenchmark, OBJECTIVES
+
+ART_DIR = os.path.join(os.path.dirname(__file__), os.pardir, "benchmark", "artifacts")
+FIG_DIR = os.path.join(os.path.dirname(__file__), "figs")
+
+
+def load_reference_optimum(name, kind):
+    """artifacts/<name>.json 에 저장된 참조 최적 x/utility 를 읽는다.
+
+    이전엔 매 실행마다 bm.reference_optimum()(다중시작 좌표상승 40-restart +
+    block_coord@20k evals)을 재계산해 느렸다. build.py 가 이미 이 값을 산출해
+    저장해 두므로(run.py의 load_ref와 동일 소스) 그걸 그대로 읽는다.
+    """
+    with open(os.path.join(ART_DIR, f"{name}.json")) as f:
+        d = json.load(f)
+    ref = d["reference_optimum"][kind]
+    return np.array(ref["x"], dtype=int), float(ref["utility"])
 
 
 def pick_strongest_pair(bm):
@@ -95,8 +116,8 @@ def main():
     bm1 = BlackBoxBenchmark(configs.BM1)
     bm3 = BlackBoxBenchmark(configs.BM3)
 
-    # 기준점: BM3 sum reference incumbent
-    x_ref, ref_score = bm3.reference_optimum("sum", seed=100)
+    # 기준점: BM3 sum reference incumbent (artifacts/BM3.json 에서 읽음, B8)
+    x_ref, ref_score = load_reference_optimum("BM3", "sum")
 
     # -----------------------------
     # Panel A: BM1 vs BM3 local sweep (multimodality)
@@ -216,8 +237,11 @@ def main():
         y=0.98
     )
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    fig.savefig("bm3_explain.png", dpi=160)
-    plt.show()
+    os.makedirs(FIG_DIR, exist_ok=True)
+    out_path = os.path.join(FIG_DIR, "bm3_explain.png")
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)
+    print(f"saved -> {out_path}")
 
 
 if __name__ == "__main__":
