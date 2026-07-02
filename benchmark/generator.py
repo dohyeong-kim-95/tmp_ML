@@ -231,8 +231,18 @@ class BlackBoxBenchmark:
             y_hi[mi] = max(y_hi[mi], vmax)
             y_lo[mi] = min(y_lo[mi], vmin)
         self._y_lo, self._y_hi = y_lo, y_hi
-        # 노이즈: 원시 Y 스프레드(표준편차)의 noise_frac
-        self.noise_scale = self.cfg.noise_frac * ys.std(axis=0)
+        # 노이즈: '주효과' 스프레드(표준편차)의 noise_frac (A2 — 문서 정의와 일치).
+        # 이전엔 교호·3차항까지 포함한 전체 raw-Y 표준편차를 썼는데, 교호가 강한
+        # BM일수록 실효 노이즈가 설정 의도(noise_frac)보다 커지는 문제가 있었다.
+        # 주효과는 변수별 가법항이라 균등 레벨 분포에서 분산 = Σ_j Var(tab_j) 로
+        # 닫힌형 계산이 가능(표본 불필요, 결정적).
+        main_var = np.array([
+            sum(float(tab.var()) for tab in self.main[m].values())
+            for m in OBJECTIVES
+        ])
+        self.main_effect_spread = np.sqrt(main_var)
+        self.total_spread = ys.std(axis=0)          # 참고/리포트용(교호 포함)
+        self.noise_scale = self.cfg.noise_frac * self.main_effect_spread
 
     def random_X(self, rng, n):
         X = np.empty((n, N_VARS), dtype=int)
@@ -299,21 +309,133 @@ class BlackBoxBenchmark:
                 used += 1
         return bx, bv
 
-    def reference_optimum(self, kind, seed=0, n_restart=40, n_sweep=5,
-                          global_budget=20000):
-        """scalarization 의 참조 최적해/효용 = 가장 강한 탐색기의 최댓값.
+    def _sa_opt(self, kind, budget=30000, seed=0, n_restart=6):
+        """노이즈 없는 mixed-move SA (참조 천장용, A1).
 
-        max(다중시작 좌표상승, block_coord@global_budget). block-coordinate@20k이
-        대부분 칸에서 더 높은(= 더 타이트한) 천장을 주고(global maxima), 좌표상승은
-        안전망. 어느 칸에서도 천장이 후퇴하지 않음.
+        좌표법과 다른 inductive bias: 한 번에 1~3개 변수를 함께 움직이고
+        (ordinal ±1~2 / categorical random-reset) 내리막도 확률 수용 →
+        좌표 스윕이 못 넘는 결합/능선을 넘을 수 있다. geometric cooling,
+        n_restart 회 재시작.
         """
         rng = np.random.default_rng(seed)
+        sf = lambda x: float(self.score(np.asarray(x)[None, :], kind)[0])
+        T0 = float(np.std(self.score(self.random_X(rng, 512), kind)))
+        T0 = max(T0, 1e-6)
+        best_x, best_v = None, -np.inf
+        per = max(budget // n_restart, 1)
+        for _ in range(n_restart):
+            x = self.random_X(rng, 1)[0]
+            cur = sf(x)
+            if cur > best_v:
+                best_v, best_x = cur, x.copy()
+            for t in range(per):
+                T = T0 * (0.001 ** (t / per))       # T0 → T0/1000
+                k = 1 + (rng.random() < 0.35) + (rng.random() < 0.10)
+                cand = x.copy()
+                for j in rng.choice(N_VARS, size=int(k), replace=False):
+                    L = int(self.levels[j])
+                    if L <= 1:
+                        continue
+                    if self.is_cat[j]:               # categorical: random reset
+                        nv = int(rng.integers(0, L - 1))
+                        nv += (nv >= cand[j])
+                    else:                            # ordinal: ±1~2 local step
+                        step = int(rng.integers(1, 3))
+                        step = step if rng.random() < 0.5 else -step
+                        nv = int(np.clip(cand[j] + step, 0, L - 1))
+                    cand[j] = nv
+                s = sf(cand)
+                if s >= cur or rng.random() < np.exp((s - cur) / max(T, 1e-9)):
+                    x, cur = cand, s
+                    if cur > best_v:
+                        best_v, best_x = cur, x.copy()
+        return best_x, float(best_v)
+
+    def _ga_opt(self, kind, budget=30000, seed=0, pop=64):
+        """노이즈 없는 GA-lite (참조 천장용, A1).
+
+        좌표법과 다른 inductive bias: uniform crossover 로 여러 변수를 동시에
+        재조합(빌딩블록 결합) + 혼합 돌연변이(ordinal ±1 / categorical reset),
+        (μ+λ) 생존선택. 세대 단위 벡터평가라 빠르다.
+        """
+        rng = np.random.default_rng(seed)
+        P = self.random_X(rng, pop)
+        F = self.score(P, kind)
+        used = pop
+        bi = int(np.argmax(F))
+        best_x, best_v = P[bi].copy(), float(F[bi])
+        while used < budget:
+            n_child = min(pop, budget - used)
+            t1 = rng.integers(0, pop, size=(n_child, 2))
+            t2 = rng.integers(0, pop, size=(n_child, 2))
+            p1 = np.where(F[t1[:, 0]] >= F[t1[:, 1]], t1[:, 0], t1[:, 1])
+            p2 = np.where(F[t2[:, 0]] >= F[t2[:, 1]], t2[:, 0], t2[:, 1])
+            mask = rng.random((n_child, N_VARS)) < 0.5
+            C = np.where(mask, P[p1], P[p2])
+            mut = rng.random((n_child, N_VARS)) < (1.5 / N_VARS)
+            for j in range(N_VARS):
+                idx = np.nonzero(mut[:, j])[0]
+                if idx.size == 0:
+                    continue
+                L = int(self.levels[j])
+                if self.is_cat[j] or L <= 2:         # categorical: random reset
+                    C[idx, j] = rng.integers(0, L, size=idx.size)
+                else:                                # ordinal: ±1 local step
+                    C[idx, j] = np.clip(
+                        C[idx, j] + rng.choice([-1, 1], size=idx.size), 0, L - 1)
+            Fc = self.score(C, kind)
+            used += n_child
+            allP = np.vstack([P, C])
+            allF = np.concatenate([F, Fc])
+            top = np.argsort(-allF)[:pop]
+            P, F = allP[top], allF[top]
+            if float(F[0]) > best_v:
+                best_v, best_x = float(F[0]), P[0].copy()
+        return best_x, float(best_v)
+
+    #: reference_ceiling 앙상블 구성(탐색기 이름 → 사용 여부/예산 기본값)
+    CEILING_SEARCHERS = ("coord_multistart", "block_coord", "sa", "ga")
+
+    def reference_ceiling(self, kind, seed=0, n_restart=40, n_sweep=5,
+                          global_budget=20000, sa_budget=30000, ga_budget=30000):
+        """scalarization 의 참조 천장 = **서로 다른 inductive bias 탐색기 앙상블의 max** (A1).
+
+        기존에는 좌표상승 + block-coordinate(둘 다 좌표 계열)만으로 천장을 정해,
+        비분리 BM에서 천장이 과소평가되고 그 편향이 챔피언(block_coord_local)과
+        같은 방향이라 closure 비교가 순환적이라는 문제가 있었다(Fable_feedback A1).
+        여기에 비좌표 계열(SA: 다변수 확률이동, GA: 재조합)을 추가하고, 탐색기별
+        값(by_searcher)과 그 편차(spread)를 함께 반환해 천장의 불확실성을 드러낸다.
+        어떤 탐색기가 이기든 max 를 취하므로 천장은 후퇴하지 않는다.
+        """
+        rng = np.random.default_rng(seed)
+        by, xs = {}, {}
         xc, vc = self._coord_opt(
             rng, lambda X: self.score(X, kind),
             maximize=True, n_restart=n_restart, n_sweep=n_sweep,
         )
+        by["coord_multistart"], xs["coord_multistart"] = float(vc), xc
         if global_budget and global_budget > 0:
             xb, vb = self._block_coord_opt(kind, budget=global_budget, seed=seed)
-            if vb > vc:
-                return xb, float(vb)
-        return xc, float(vc)
+            by["block_coord"], xs["block_coord"] = float(vb), xb
+        if sa_budget and sa_budget > 0:
+            xa, va = self._sa_opt(kind, budget=sa_budget, seed=seed)
+            by["sa"], xs["sa"] = float(va), xa
+        if ga_budget and ga_budget > 0:
+            xg, vg = self._ga_opt(kind, budget=ga_budget, seed=seed)
+            by["ga"], xs["ga"] = float(vg), xg
+        winner = max(by, key=by.get)
+        return {
+            "x": xs[winner],
+            "utility": by[winner],
+            "winner": winner,
+            "by_searcher": by,
+            "spread": float(max(by.values()) - min(by.values())),
+        }
+
+    def reference_optimum(self, kind, seed=0, n_restart=40, n_sweep=5,
+                          global_budget=20000, **ceiling_kw):
+        """(하위호환 래퍼) reference_ceiling 의 (x, utility)만 반환."""
+        d = self.reference_ceiling(kind, seed=seed, n_restart=n_restart,
+                                   n_sweep=n_sweep, global_budget=global_budget,
+                                   **ceiling_kw)
+        return d["x"], d["utility"]

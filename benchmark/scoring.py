@@ -22,26 +22,46 @@ import numpy as np
 # 정규화
 # ---------------------------------------------------------------------------
 class MinMaxNormalizer:
-    """목적별 raw-y 범위로 [0,1] 정규화 (1=best). 방향(min/max)을 흡수한다."""
+    """목적별 raw-y 범위로 [0,1] 정규화 (1=best). 방향(min/max)을 흡수한다.
 
-    def __init__(self, lo, hi, maximize_mask):
+    clip=True(기본, 기존 동작)이면 범위 밖 값을 [0,1]로 잘라낸다. 캘리브레이션
+    범위(hi) 밖에 더 좋은 점이 있으면 z=1로 포화돼 점수가 그 이득을 구분하지
+    못하므로(A3), 포화가 의심되는 분석에서는 clip=False 로 끄고 확인할 수 있다.
+    """
+
+    def __init__(self, lo, hi, maximize_mask, clip=True):
         self.lo = np.asarray(lo, dtype=float)
         self.hi = np.asarray(hi, dtype=float)
         self.maximize = np.asarray(maximize_mask, dtype=bool)
+        self.clip = bool(clip)
 
     @classmethod
-    def from_samples(cls, Y, maximize_mask):
+    def from_samples(cls, Y, maximize_mask, clip=True):
         """관측 표본의 목적별 min/max 로 정규화 범위 설정(실문제 적응용)."""
         Y = np.atleast_2d(np.asarray(Y, float))
-        return cls(Y.min(axis=0), Y.max(axis=0), maximize_mask)
+        return cls(Y.min(axis=0), Y.max(axis=0), maximize_mask, clip=clip)
 
     def transform(self, Y):
-        """raw Y(...,M) -> z(...,M) in [0,1], 1=best."""
+        """raw Y(...,M) -> z(...,M), 1=best. clip=True 면 [0,1]로 제한."""
         Y = np.atleast_2d(np.asarray(Y, float))
         span = np.maximum(self.hi - self.lo, 1e-12)
         t = (Y - self.lo) / span                 # raw 스케일 0..1
         z = np.where(self.maximize, t, 1.0 - t)  # 최소화 목적 반전
-        return np.clip(z, 0.0, 1.0)
+        return np.clip(z, 0.0, 1.0) if self.clip else z
+
+    def saturation_fraction(self, Y, tol=1e-12):
+        """목적별 (하단 포화율, 상단 포화율) — 범위 밖(z가 0/1로 잘리는) 비율.
+
+        상단 포화(z→1 잘림)는 '캘리브레이션 천장보다 좋은 값'이 뭉개진다는
+        신호로, ref_opt 과소평가(A1)와 짝지어 점검한다(A3 리포트용).
+        """
+        Y = np.atleast_2d(np.asarray(Y, float))
+        span = np.maximum(self.hi - self.lo, 1e-12)
+        t = (Y - self.lo) / span
+        z = np.where(self.maximize, t, 1.0 - t)
+        low = (z < -tol).mean(axis=0)
+        high = (z > 1.0 + tol).mean(axis=0)
+        return low, high
 
 
 # ---------------------------------------------------------------------------

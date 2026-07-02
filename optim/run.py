@@ -24,6 +24,7 @@ import time
 import numpy as np
 
 from benchmark.generator import BlackBoxBenchmark
+from benchmark.integrity import verify_artifact
 from benchmark import configs
 from benchmark.scoring import ScoreSystem
 from .problem import Problem
@@ -39,9 +40,18 @@ def floor_score(bm, kind, n=5000, seed=0):
     return float(bm.score(X, kind).mean())
 
 
-def load_ref(name, kind):
-    with open(os.path.join(ART_DIR, f"{name}.json")) as f:
-        return json.load(f)["reference_optimum"][kind]["utility"]
+def load_artifact(name, bm=None):
+    """artifact 로드 + (A4) 현재 configs/generator/NumPy 와의 정합성 검증.
+
+    bm 을 주면 config 해시·함수 지문까지 대조하고, 불일치면 명확한 에러로 중단
+    → stale ref_opt 로 closure 를 조용히 오염시키는 사고 방지.
+    """
+    path = os.path.join(ART_DIR, f"{name}.json")
+    with open(path) as f:
+        art = json.load(f)
+    if bm is not None:
+        verify_artifact(configs.ALL[name], bm, art, path=path)
+    return art
 
 
 def main():
@@ -85,13 +95,14 @@ def main():
     bm_cache = {name: BlackBoxBenchmark(configs.ALL[name]) for name in bms}
     for name in bms:
         bm = bm_cache[name]
+        art = load_artifact(name, bm)   # A4: stale artifact 면 여기서 중단
         res["floor"].setdefault(name, {})
         res["ref_opt"].setdefault(name, {})
         for kind in kinds:
             if kind not in res["floor"][name]:
                 res["floor"][name][kind] = floor_score(bm, kind)
             if kind not in res["ref_opt"][name]:
-                res["ref_opt"][name][kind] = load_ref(name, kind)
+                res["ref_opt"][name][kind] = art["reference_optimum"][kind]["utility"]
 
     for algo in algos:
         run_fn = REGISTRY[algo]
@@ -151,6 +162,12 @@ def main():
                       + " ".join(f"clo@{b}={closure[str(b)]:.2%}"
                                 for b in checkpoints if str(b) in closure)
                       + f"  ({dt:.1f}s)")
+                # A1: 천장 누수 감지 — 옵티마이저가 참조천장을 넘으면 ref_opt 가
+                # 과소평가된 것. 앙상블 천장에서도 발생하면 build 재검토 신호.
+                for b, v in closure.items():
+                    if v > 1.005:
+                        print(f"    ⚠ closure@{b}={v:.2%} > 100% — {name}/{kind} 의 "
+                              f"참조천장(ref_opt)이 과소평가됐을 수 있음")
 
         with open(args.out, "w") as f:
             json.dump(res, f, ensure_ascii=False, indent=2)

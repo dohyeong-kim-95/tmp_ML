@@ -16,6 +16,7 @@ import os
 import numpy as np
 
 from .generator import BlackBoxBenchmark, OBJECTIVES, COMMON, SET1, SET2, N_VARS
+from .integrity import integrity_record
 from . import configs
 
 ART_DIR = os.path.join(os.path.dirname(__file__), "artifacts")
@@ -78,17 +79,40 @@ def build_one(cfg):
             "space_size_log10": float(np.log10(bm.levels.astype(float)).sum()),
         },
         "noise_scale": [float(x) for x in bm.noise_scale],
+        "main_effect_spread": [float(x) for x in bm.main_effect_spread],
+        "total_spread": [float(x) for x in bm.total_spread],
         "y_lo": [float(x) for x in bm.y_lo],
         "y_hi": [float(x) for x in bm.y_hi],
         "reference_optimum": {},
         "difficulty_random_search": {},
         "difficulty_local_search": {},
+        "integrity": integrity_record(cfg, bm),
+    }
+    # A3: 정규화 clip 포화 리포트 — 랜덤 표본에서 z 가 [0,1] 밖으로 잘리는 비율.
+    # 상단 포화(high)가 크면 캘리브레이션 천장(y_hi/y_lo)보다 좋은 값이 clip 으로
+    # 뭉개지고 있다는 신호(→ ref_opt 과소평가 점검, A1과 짝).
+    sat_rng = np.random.default_rng(4242)
+    sat_low, sat_high = bm.scorer.norm.saturation_fraction(
+        bm.raw(bm.random_X(sat_rng, 20000)))
+    rec["saturation_random20k"] = {
+        "low_frac": [float(v) for v in sat_low],
+        "high_frac": [float(v) for v in sat_high],
     }
     for kind in BlackBoxBenchmark.SCALARIZATIONS:
-        x_star, u_star = bm.reference_optimum(kind, seed=100)
+        ceil = bm.reference_ceiling(kind, seed=100)
+        x_star, u_star = ceil["x"], ceil["utility"]
+        # A3: 참조최적점에서 목적별 z 가 상단(1)에 붙었는지 — 붙어 있으면 clip 이
+        # 그 목적의 추가 이득을 가리고 있을 수 있음.
+        z_star = bm.z(np.asarray(x_star)[None, :])[0]
         rec["reference_optimum"][kind] = {
             "utility": u_star,
             "x": [int(v) for v in x_star],
+            # A1: 천장 앙상블 투명화 — 어느 탐색기가 이겼고 편차가 얼마인지
+            "winner": ceil["winner"],
+            "by_searcher": {k: float(v) for k, v in ceil["by_searcher"].items()},
+            "searcher_spread": ceil["spread"],
+            "z_at_optimum": [float(v) for v in z_star],
+            "z_saturated_at_top": [bool(v >= 1.0 - 1e-9) for v in z_star],
         }
         # 난이도 점검: 랜덤서치 / 예산제한 local-search 가 참조최적 대비 닫는 정도
         rec["difficulty_random_search"][kind] = {}
@@ -122,15 +146,24 @@ def main():
                         closure[180], closure[2400], ref_eq))
         print(f"[{name}] saved -> {path}")
         print(f"    space 10^{rec['layout']['space_size_log10']:.2f}, "
-              f"noise_scale~{np.mean(rec['noise_scale']):.3f}")
+              f"noise_scale~{np.mean(rec['noise_scale']):.3f} "
+              f"(main_spread~{np.mean(rec['main_effect_spread']):.3f}, "
+              f"total_spread~{np.mean(rec['total_spread']):.3f})")
+        sat = rec["saturation_random20k"]
+        print(f"    saturation(random20k): low~{np.mean(sat['low_frac']):.2%} "
+              f"high~{np.mean(sat['high_frac']):.2%} "
+              f"(high max={max(sat['high_frac']):.2%})")
         for kind in BlackBoxBenchmark.SCALARIZATIONS:
             r = rec["difficulty_random_search"][kind]
             l = rec["difficulty_local_search"][kind]
-            ref = rec["reference_optimum"][kind]["utility"]
-            print(f"    [{kind:9s}] ref_opt={ref:.3f}  "
+            ro = rec["reference_optimum"][kind]
+            by = " ".join(f"{k}={v:.3f}" for k, v in ro["by_searcher"].items())
+            print(f"    [{kind:9s}] ref_opt={ro['utility']:.3f} "
+                  f"[win={ro['winner']}, spread={ro['searcher_spread']:.3f}] "
                   f"RS180={r['180']['rs_best_mean']:.3f}  "
                   f"LS180={l['180']['ls_best_mean']:.3f} "
                   f"LS2400={l['2400']['ls_best_mean']:.3f}")
+            print(f"               ceiling by_searcher: {by}")
 
     print("\n=== 난이도 ladder (sum): local-search gap-closure = LS_best/ref_opt ===")
     print(f"{'BM':4s} {'space':8s} {'closure@180':12s} {'closure@2400':12s} {'ref_opt':8s}")
