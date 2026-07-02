@@ -24,6 +24,19 @@ FIG_DIR = os.path.join(os.path.dirname(__file__), "figs")
 BM_COLORS = {"BM1": "#4C9F70", "BM2": "#E1A53F", "BM3": "#C0504D", "BM4": "#6A4C9C"}
 
 
+def _ylim_top(*tops, floor=1.05, pad=0.08):
+    """데이터 max 기준 동적 y상한(B7).
+
+    고정 상한(예: 1.15)은 "BM4 등에서 closure>1 가능"한 상황을 잘라버려 역전의
+    크기를 안 보이게 만든다. floor 는 데이터가 1.0 근방이어도 기준선이 항상 여유
+    있게 보이도록 하는 최소 상한.
+    """
+    vals = [v for v in tops if np.isfinite(v)]
+    if not vals:
+        return floor
+    return max(floor, max(vals) * (1 + pad))
+
+
 def _cell(res, algo, bm, kind):
     try:
         return res["runs"][algo][bm][kind]
@@ -44,6 +57,7 @@ def plot_budget(res, budget, path):
     w = 0.8 / max(len(bms), 1)
     for ax, kind in zip(axes, kinds):
         floor_map = res["floor"]; ref_map = res["ref_opt"]
+        tops = []
         for bi, bm in enumerate(bms):
             means, lo, hi = [], [], []
             fl = floor_map[bm][kind]; rf = ref_map[bm][kind]; den = max(rf - fl, 1e-9)
@@ -58,10 +72,11 @@ def plot_budget(res, budget, path):
                 lo.append(m - clo.min()); hi.append(clo.max() - m)
             ax.bar(x + (bi - (len(bms) - 1) / 2) * w, means, w, yerr=[lo, hi],
                    capsize=3, color=BM_COLORS[bm], label=bm, error_kw=dict(alpha=0.5))
+            tops.extend(m + h for m, h in zip(means, hi) if np.isfinite(m))
         ax.axhline(1.0, ls="--", c="gray", lw=0.8)
         ax.set_title(f"kind = {kind}")
         ax.set_xticks(x); ax.set_xticklabels(algos)
-        ax.set_ylabel("closure"); ax.set_ylim(0, 1.15)
+        ax.set_ylabel("closure"); ax.set_ylim(0, _ylim_top(*tops))
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.legend(loc="upper left", ncol=3, fontsize=8)
         ax.grid(axis="y", alpha=0.25)
@@ -86,6 +101,7 @@ def plot_by_kind(res, budget, path):
     w = 0.8 / max(len(bms), 1)
     for idx, a in enumerate(algos):
         ax = axes[idx // ncol][idx % ncol]
+        tops = []
         for bi, bm in enumerate(bms):
             vals = []
             for kind in kinds:
@@ -99,9 +115,10 @@ def plot_by_kind(res, budget, path):
                     vals.append(float(((arr - fl) / den).mean()))
             ax.bar(x + (bi - (len(bms) - 1) / 2) * w, vals, w,
                    color=BM_COLORS[bm], label=bm)
+            tops.extend(vals)
         ax.set_title(a)
         ax.set_xticks(x); ax.set_xticklabels(kinds)
-        ax.set_ylim(0, 1.15); ax.axhline(1.0, ls="--", c="gray", lw=0.8)
+        ax.set_ylim(0, _ylim_top(*tops)); ax.axhline(1.0, ls="--", c="gray", lw=0.8)
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.grid(axis="y", alpha=0.25)
         ax.set_ylabel("closure")
@@ -137,9 +154,11 @@ def plot_block_lift(res, kind, budget, path):
             return np.nan
 
     for ax, bm in zip(axes, bms):
-        ax.bar(x - w / 2, [clo(b, bm) for b in bases], w,
+        flat_vals = [clo(b, bm) for b in bases]
+        blk_vals = [clo(b + "_blk", bm) for b in bases]
+        ax.bar(x - w / 2, flat_vals, w,
                label="flat (no block)", color="#9bbcc4", edgecolor="k", lw=0.4)
-        ax.bar(x + w / 2, [clo(b + "_blk", bm) for b in bases], w,
+        ax.bar(x + w / 2, blk_vals, w,
                label="+block (=blk)", color="#E1A53F", edgecolor="k", lw=0.4)
         bc = clo("block_coord_local", bm)
         if np.isfinite(bc):
@@ -147,7 +166,7 @@ def plot_block_lift(res, kind, budget, path):
                        label=f"block_coord_local ({bc:.0%})")
         ax.set_title(f"{bm} | {kind} @{budget}")
         ax.set_xticks(x); ax.set_xticklabels(bases, rotation=30)
-        ax.set_ylim(0, 1.05)
+        ax.set_ylim(0, _ylim_top(bc, *flat_vals, *blk_vals))
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.grid(axis="y", alpha=0.25)
         if bm == bms[0]:
@@ -195,7 +214,7 @@ def plot_vs_global(res, path, ref_algo="block_coord_local", ref_budget=20000):
                    label=f"global max ({ref_algo}@{ref_budget})")
         ax.set_title(f"{bm}")
         ax.set_xticks(x); ax.set_xticklabels(kinds)
-        ax.set_ylim(0, 1.08)
+        ax.set_ylim(0, _ylim_top(*c180, *c780))
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.grid(axis="y", alpha=0.25)
         if bm == BMS[0]:
@@ -227,6 +246,7 @@ def plot_pool(res, budget, path):
                  fontsize=12)
     x = np.arange(len(labels)); w = 0.8 / max(len(bms), 1)
     for ax, kind in zip(axes, kinds):
+        tops = []
         for bi, bm in enumerate(bms):
             means, lo, hi, wins = [], [], [], []
             for lbl, members in POOL:
@@ -247,10 +267,11 @@ def plot_pool(res, budget, path):
                 if tag and np.isfinite(m):
                     ax.text(x[xi] + off, m + 0.01, tag, ha="center", va="bottom",
                             fontsize=6, rotation=90, color="#333")
+            tops.extend(m + h for m, h in zip(means, hi) if np.isfinite(m))
         ax.axhline(1.0, ls="--", c="gray", lw=0.8)
         ax.set_title(f"kind = {kind}")
         ax.set_xticks(x); ax.set_xticklabels(labels)
-        ax.set_ylabel("closure"); ax.set_ylim(0, 1.2)
+        ax.set_ylabel("closure"); ax.set_ylim(0, _ylim_top(*tops))
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.legend(loc="upper left", ncol=len(bms), fontsize=8)
         ax.grid(axis="y", alpha=0.25)
@@ -279,6 +300,7 @@ def plot_pool_budgets(res, bm, budgets, path):
                  fontsize=12)
     x = np.arange(len(labels)); w = 0.8 / max(len(budgets), 1)
     for ax, kind in zip(axes, kinds):
+        tops = []
         for bi, b in enumerate(budgets):
             means, lo, hi, tags = [], [], [], []
             for lbl, members in POOL:
@@ -299,10 +321,11 @@ def plot_pool_budgets(res, bm, budgets, path):
                 if tag and np.isfinite(m):
                     ax.text(x[xi] + off, m + 0.01, tag, ha="center", va="bottom",
                             fontsize=5, rotation=90, color="#333")
+            tops.extend(m + h for m, h in zip(means, hi) if np.isfinite(m))
         ax.axhline(1.0, ls="--", c="gray", lw=0.8)
         ax.set_title(f"kind = {kind}")
         ax.set_xticks(x); ax.set_xticklabels(labels)
-        ax.set_ylabel("closure"); ax.set_ylim(0, 1.2)
+        ax.set_ylabel("closure"); ax.set_ylim(0, _ylim_top(*tops))
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0%}")
         ax.legend(loc="upper left", ncol=len(budgets), fontsize=9, title="budget")
         ax.grid(axis="y", alpha=0.25)
