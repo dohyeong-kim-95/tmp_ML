@@ -1,0 +1,28 @@
+# 실행에 필요한 의존성 (AGENTS.md 산문 설명을 코드화, C1).
+# 실제 import 목록과 대조: benchmark/*.py, optim/*.py 전체 grep 기준.
+#
+# 설치: pip install -r requirements.txt
+#
+# 참고:
+#  - smac은 scikit-learn==1.6.1 핀이 필요(다른 버전과 호환성 문제 보고됨).
+#  - matplotlib>=3.9: bm3_visualize.py의 boxplot(tick_labels=...)가 3.9 전용.
+#  - pytest는 tests/ 실행용(numpy만 있으면 대부분 통과, optuna/pymoo/smac/
+#    torch가 필요한 어댑터 테스트는 없음).
+
+numpy
+scipy
+matplotlib>=3.9
+
+# 알고리즘 어댑터(optim/algos.py) — 각각 lazy import 이므로 미설치 시
+# 해당 어댑터만 비활성화됨(REGISTRY의 다른 항목엔 영향 없음).
+optuna
+pymoo
+ConfigSpace
+smac
+scikit-learn==1.6.1      # smac이 요구하는 핀
+torch
+gpytorch
+botorch
+
+# 테스트
+pytest
