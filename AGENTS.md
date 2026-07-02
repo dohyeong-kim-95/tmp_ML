@@ -43,6 +43,7 @@ AGENTS.md, 00_Plan.md     계획/맥락 문서
 - **anytime/예산**: 한 알고리즘을 max_budget까지 1회 실행하고 곡선에서 180/780 체크포인트 추출. 성능은 방문한 점들의 **참(노이즈 없는) 점수 누적 최댓값**으로 평가(추천정책 무관, 공정).
 - **block_coord_local**: 블록-인지 좌표 local search. marginal-balanced 초기점 → `common→set2→set1` 라운드 반복(common 재방문) + best-improvement 1-hop + random-restart, 캐시로 중복평가 회피. (개념상 stepwise/OFAT의 일반화 = 그리디 좌표법. 약점도 동일: 교호작용/비분리에 취약.)
 - **global maxima**: `block_coord_local@20000`(BM3 기준 ~52s)으로 정의. 9칸 중 7칸에서 기존 ref_opt 이상 → 더 타이트한 천장.
+- **(2026-07 방법론 수정, Fable_feedback A-tier)**: ref_opt 는 이제 **앙상블 천장**(`reference_ceiling` = 좌표상승+block_coord+SA+GA-lite 의 max, 탐색기별 값·편차를 artifact 에 기록) — 좌표 계열만으로 천장을 정하던 순환성 보정. 노이즈는 **주효과 스프레드 기준**(noise_frac×√ΣVar(tab), 닫힌형). artifact 는 `integrity`(config 해시+fingerprint)로 stale 검증(run.py 가 로드 시 체크). 수정 전 상태는 커밋 `c02eae1`(로컬 태그 pre-methodology-fix).
 
 ## 지금까지의 결론 (중요)
 1. **block_coord_local이 저예산에서 압도** (sum BM1 ~100%@780 = global max 도달). @780은 대부분 global max의 **85~100%**, @180은 60~99%.

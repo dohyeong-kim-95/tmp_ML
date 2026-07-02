@@ -22,12 +22,25 @@
 g_m(X) = Σ_j a_{m,j}·φ_{m,j}(x_j)            # 주효과(영향변수별 효과)
        + Σ_{(j,k)} b·ψ(x_j,x_k)             # 2차 교호작용
        + (BM3) 3차 항
-y_m = g_m + ε,  ε~N(0, (0.05·spread)²)
+y_m = g_m + ε,  ε~N(0, (noise_frac·spread_main)²)   # spread_main = 주효과 성분 표준편차
 ```
 - φ: ordinal=매끄러운 곡선(성분수=봉우리수↔다봉성), categorical=레벨별 랜덤효과
 - effect sparsity: 목적당 strong driver 소수 + weak 다수
 - 충돌: 공통블록 base shape를 `conflict_rho`로 공유 → max/min 좋은방향 상충
-- 정규화: 목적별 goodness(최소화는 부호반전)를 [0,1], 1=best
+- 노이즈(A2): `noise_scale = noise_frac × √(Σ_j Var(tab_j))` — **주효과 스프레드**
+  기준(닫힌형, 결정적). 교호 포함 전체 스프레드가 아님(교호가 강한 BM에서 실효
+  노이즈가 의도보다 커지던 문제 수정).
+- 정규화: 목적별 goodness(최소화는 부호반전)를 [0,1], 1=best.
+  clip 은 knob(`MinMaxNormalizer(..., clip=)`, 기본 True) — A3.
+
+## 참조 천장(reference ceiling) — A1
+`reference_ceiling(kind)` = **서로 다른 inductive bias 탐색기 앙상블의 max**:
+다중시작 좌표상승 + block-coordinate@20k(좌표 계열) + mixed-move SA@30k +
+GA-lite@30k(비좌표 계열). 탐색기별 값(`by_searcher`)과 편차(`searcher_spread`)를
+artifact 에 기록해 천장의 불확실성을 드러낸다. 좌표 계열만으로 천장을 정하면
+비분리 BM에서 과소평가되고 그 편향이 block_coord_local(챔피언)과 같은 방향이라
+closure 비교가 순환적이었던 문제(Fable_feedback A1)의 보정. artifact 는
+`integrity`(config 해시+fingerprint, A4)로 stale 여부가 검증된다.
 
 ## 점수(scalarization) 3종 — `scoring.py` (독립 모듈)
 벤치마크/실문제 공용. min-max 정규화(1=best) 후:
