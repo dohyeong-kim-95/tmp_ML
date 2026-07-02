@@ -3,6 +3,13 @@
 > 검토 범위: `benchmark/`(generator/configs/scoring/build), `optim/`(problem/algos/blockwrap/design/run/summarize/visualize), 루트 스크립트·문서.
 > 심각도 순서: **A. 방법론(결론 신뢰성)** → **B. 버그/동작 결함** → **C. 재현성·인프라** → **D. 코드 품질(경미)**.
 
+> **✅ 해결 현황 (2026-07-02)**: 아래 항목은 모두 반영 완료.
+> - B/C/D-tier: 세션 1에서 수정 (`1998f54`~`c02eae1`, 항목별 커밋)
+> - A-tier: 세션 2에서 수정 — A1은 plant-the-optimum 대신 **앙상블 천장**(비좌표 SA/GA 포함
+>   `reference_ceiling`) 채택. 코드 `4f87bfd`, artifacts 재생성 `53592d6`, 재검증 `3e69bb6`
+> - 재검증 결과: closure>1 소멸, block_coord_local 1위 결론 유지 — `optim/FINDINGS.md` 최상단 참조
+> - 수정 전 기준점: 커밋 `c02eae1` (로컬 태그 pre-methodology-fix)
+
 ---
 
 ## A. 방법론 — 결론의 신뢰성에 영향을 주는 문제
