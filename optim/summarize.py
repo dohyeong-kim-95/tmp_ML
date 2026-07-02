@@ -18,10 +18,16 @@ import numpy as np
 from benchmark.scoring import ScoreSystem
 
 ALGO_ORDER = ["random", "sobol", "mlhs", "block_coord_local",
-              "sa", "ga", "pso", "aco", "tpe", "smac", "botorch",
+              "sa", "ga", "pso", "pso_mixed", "aco", "tpe", "smac", "botorch",
               "random_blk", "sobol_blk", "mlhs_blk", "sa_blk",
-              "ga_blk", "pso_blk", "aco_blk", "tpe_blk", "smac_blk", "botorch_blk"]
+              "ga_blk", "pso_blk", "pso_mixed_blk", "aco_blk", "tpe_blk",
+              "smac_blk", "botorch_blk"]
 BMS = ["BM1", "BM2", "BM3", "BM4"]
+
+# 블록-분해(*_blk) 비교의 기준이 되는 base 알고리즘 목록(표/그림 공용).
+# ALGO_ORDER에서 유도해 새 알고리즘 추가 시 한 곳만 고치면 되도록 함(B1 재발 방지).
+BASE_ALGOS = [a for a in ALGO_ORDER
+              if not a.endswith("_blk") and a != "block_coord_local"]
 
 # 축소 풀(plot용): 각 항목 = (라벨, [후보 algo들]).
 #  - SF       = space-filling 중 best (random/sobol/mlhs)

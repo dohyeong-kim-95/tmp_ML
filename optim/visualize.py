@@ -17,7 +17,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from benchmark.scoring import ScoreSystem
-from .summarize import merge, ALGO_ORDER, BMS, POOL, pool_pick, per_seed_closures
+from .summarize import (merge, ALGO_ORDER, BASE_ALGOS, BMS, POOL, pool_pick,
+                        per_seed_closures)
 
 FIG_DIR = os.path.join(os.path.dirname(__file__), "figs")
 BM_COLORS = {"BM1": "#4C9F70", "BM2": "#E1A53F", "BM3": "#C0504D", "BM4": "#6A4C9C"}
@@ -123,8 +124,7 @@ def plot_block_lift(res, kind, budget, path):
     base 별 flat vs *_blk 막대를 BM별 서브플롯으로, block_coord_local 을 점선으로.
     → '우위가 블록 덕인지(=모두 상승) base 덕인지(=blk끼리 차이)'를 분리해 보여줌.
     """
-    bases = ["random", "sobol", "mlhs", "sa", "ga", "pso", "aco", "tpe"]
-    bases = [b for b in bases if b in res["runs"] and f"{b}_blk" in res["runs"]]
+    bases = [b for b in BASE_ALGOS if b in res["runs"] and f"{b}_blk" in res["runs"]]
     bms = [b for b in BMS if b in res["floor"]]
     fig, axes = plt.subplots(1, len(bms), figsize=(5 * len(bms), 4.6), squeeze=False)
     axes = axes[0]
